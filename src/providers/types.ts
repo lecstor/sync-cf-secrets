@@ -22,7 +22,10 @@ export interface SecretProvider {
   /** Fetch all secrets for an environment. Returns Map<envVarName, value>. */
   fetch(opts: FetchOpts): Promise<Map<string, string>>;
 
-  /** Create or update an item with the given secrets. */
+  /** Check if an item exists. */
+  exists(opts: FetchOpts): Promise<boolean>;
+
+  /** Create or replace an item with the given secrets. Deletes existing item first. */
   save(opts: SaveOpts): Promise<void>;
 
   /** List field names in an item (no values). */

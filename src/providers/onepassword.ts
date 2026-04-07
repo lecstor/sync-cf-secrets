@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { cliExists, exec } from "../utils.js";
 import type { FetchOpts, SaveOpts, SecretProvider } from "./types.js";
 
@@ -62,44 +62,38 @@ export class OnePasswordProvider implements SecretProvider {
     return secrets;
   }
 
-  async save(opts: SaveOpts): Promise<void> {
-    // Build field arguments: --field "LABEL=VALUE"
-    const fieldArgs = Array.from(opts.secrets.entries())
-      .map(([label, value]) => {
-        // Escape any double quotes in the value
-        const escaped = value.replace(/"/g, '\\"');
-        return `"${label}=${escaped}"`;
-      });
-
-    // Check if item already exists
-    const exists = (() => {
-      try {
-        exec(
-          `op item get "${opts.item}" --vault "${opts.vault}" --format json`,
-          { stdio: ["pipe", "pipe", "pipe"] },
-        );
-        return true;
-      } catch {
-        return false;
-      }
-    })();
-
-    if (exists) {
-      // Update existing item: edit each field
-      for (const [label, value] of opts.secrets) {
-        execSync(
-          `op item edit "${opts.item}" --vault "${opts.vault}" "${label}=${value}"`,
-          { stdio: ["pipe", "pipe", "pipe"] },
-        );
-      }
-    } else {
-      // Create new Secure Note with all fields
-      const args = fieldArgs.map((f) => `--field ${f}`).join(" ");
+  async exists(opts: FetchOpts): Promise<boolean> {
+    try {
       exec(
-        `op item create --category "Secure Note" --vault "${opts.vault}" --title "${opts.item}" ${args}`,
+        `op item get "${opts.item}" --vault "${opts.vault}" --format json`,
         { stdio: ["pipe", "pipe", "pipe"] },
       );
+      return true;
+    } catch {
+      return false;
     }
+  }
+
+  async save(opts: SaveOpts): Promise<void> {
+    // Delete existing item first — caller is responsible for confirming
+    if (await this.exists(opts)) {
+      execFileSync("op", [
+        "item", "delete", opts.item, "--vault", opts.vault,
+      ], { stdio: ["pipe", "pipe", "pipe"] });
+    }
+
+    // Create Secure Note with all fields as positional args (no shell escaping needed)
+    // Format: op item create --category "Secure Note" 'label[password]=value' ...
+    const fieldArgs = Array.from(opts.secrets.entries())
+      .map(([label, value]) => `${label}[password]=${value}`);
+
+    execFileSync("op", [
+      "item", "create",
+      "--category", "Secure Note",
+      "--vault", opts.vault,
+      "--title", opts.item,
+      ...fieldArgs,
+    ], { stdio: ["pipe", "pipe", "pipe"] });
   }
 
   async listFields(opts: FetchOpts): Promise<string[]> {

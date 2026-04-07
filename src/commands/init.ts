@@ -1,11 +1,10 @@
+import { createInterface } from "node:readline";
 import { existsSync, readFileSync } from "node:fs";
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
-import { log, success, warn } from "../utils.js";
+import { error, log, success, warn } from "../utils.js";
 
 export interface InitOptions {
-  env: string;
-  fromDevVars: boolean;
   dryRun: boolean;
   verbose: boolean;
 }
@@ -35,56 +34,111 @@ function parseDevVars(path: string): Map<string, string> {
   return secrets;
 }
 
+/**
+ * Prompt the user for yes/no confirmation.
+ */
+function confirm(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${question} [y/N] `, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() === "y");
+    });
+  });
+}
+
 export async function init(
   provider: SecretProvider,
   config: Config,
   opts: InitOptions,
 ): Promise<void> {
-  if (!opts.fromDevVars) {
-    throw new Error("Currently only --from-dev-vars is supported.");
-  }
-
   if (!existsSync(config.devVarsPath)) {
     throw new Error(`File not found: ${config.devVarsPath}`);
   }
 
-  const secrets = parseDevVars(config.devVarsPath);
+  const devVars = parseDevVars(config.devVarsPath);
 
-  if (secrets.size === 0) {
+  if (devVars.size === 0) {
     warn("No secrets found in .dev.vars file.");
     return;
   }
 
-  log(`Parsed ${secrets.size} secret(s) from ${config.devVarsPath}`);
+  log(`Parsed ${devVars.size} field(s) from ${config.devVarsPath}\n`);
 
-  const envConfig = config.environments[opts.env];
-  if (!envConfig) {
-    throw new Error(
-      `Unknown environment "${opts.env}". ` +
-        `Available: ${Object.keys(config.environments).join(", ")}`,
-    );
-  }
+  // Check which items already exist
+  const envNames = Object.keys(config.environments);
+  const existing: string[] = [];
 
-  if (opts.dryRun) {
-    log(
-      `\nDry run — would create "${envConfig.item}" in vault "${config.vault}" with:`,
-    );
-    for (const name of secrets.keys()) {
-      log(`  ${name}`);
+  for (const env of envNames) {
+    const envConfig = config.environments[env];
+    if (await provider.exists({ vault: config.vault, item: envConfig.item })) {
+      existing.push(envConfig.item);
     }
-    return;
   }
 
-  log(
-    `Creating "${envConfig.item}" in ${provider.name} vault "${config.vault}"...`,
-  );
-  await provider.save({
-    vault: config.vault,
-    item: envConfig.item,
-    secrets,
-  });
+  if (existing.length > 0 && !opts.dryRun) {
+    warn(`These items already exist in ${provider.name}:`);
+    for (const name of existing) {
+      log(`  • ${name}`);
+    }
+    log("");
+    const confirmed = await confirm(
+      "Delete and recreate them? Existing values will be lost.",
+    );
+    if (!confirmed) {
+      log("Aborted.");
+      return;
+    }
+    log("");
+  }
 
-  success(
-    `Created "${envConfig.item}" with ${secrets.size} field(s) in ${provider.name}.`,
-  );
+  for (const env of envNames) {
+    const envConfig = config.environments[env];
+    const isLocal = env === "local";
+
+    // Local gets real values, everything else gets placeholders
+    const secrets = new Map<string, string>();
+    for (const [name, value] of devVars) {
+      secrets.set(name, isLocal ? value : "CHANGE_ME");
+    }
+
+    if (opts.dryRun) {
+      const label = isLocal ? "with values from .dev.vars" : "with CHANGE_ME placeholders";
+      const action = existing.includes(envConfig.item) ? "Replace" : "Create";
+      log(`Dry run — would ${action.toLowerCase()} "${envConfig.item}" ${label}`);
+      if (opts.verbose) {
+        for (const name of secrets.keys()) {
+          log(`  ${name}`);
+        }
+      }
+      continue;
+    }
+
+    const label = isLocal ? "with values" : "with placeholders";
+    log(`Creating "${envConfig.item}" ${label}...`);
+
+    try {
+      await provider.save({
+        vault: config.vault,
+        item: envConfig.item,
+        secrets,
+      });
+
+      if (isLocal) {
+        success(`Created "${envConfig.item}" with ${secrets.size} field(s).`);
+      } else {
+        success(`Created "${envConfig.item}" with ${secrets.size} placeholder field(s).`);
+        log(`  → Open ${provider.name} and replace CHANGE_ME values with real secrets.`);
+      }
+    } catch (err: unknown) {
+      if (err && typeof err === "object" && "stderr" in err) {
+        const stderr = (err as { stderr: Buffer | string }).stderr;
+        error(`Failed to create "${envConfig.item}": ${stderr}`);
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        error(`Failed to create "${envConfig.item}": ${msg}`);
+      }
+    }
+    log("");
+  }
 }

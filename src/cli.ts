@@ -16,7 +16,7 @@ sync-cf-secrets — Sync secrets from your password manager to Cloudflare Worker
 Usage:
   sync-cf-secrets push <env>               Push secrets to Cloudflare
   sync-cf-secrets pull <env>               Write .dev.vars from password manager
-  sync-cf-secrets init <env> --from-dev-vars   Bootstrap password manager from .dev.vars
+  sync-cf-secrets init                         Create items for all environments from .dev.vars
   sync-cf-secrets list <env>               List deployed Cloudflare secrets
   sync-cf-secrets diff <env>               Compare password manager vs Cloudflare
 
@@ -30,7 +30,7 @@ Options:
 Examples:
   sync-cf-secrets push staging --dry-run
   sync-cf-secrets pull local
-  sync-cf-secrets init local --from-dev-vars
+  sync-cf-secrets init
   sync-cf-secrets diff production --verbose
 `.trim();
 
@@ -42,7 +42,6 @@ async function main(): Promise<void> {
       vault: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
-      "from-dev-vars": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -54,7 +53,7 @@ async function main(): Promise<void> {
 
   const [command, env] = positionals;
 
-  if (!env && command !== "help") {
+  if (!env && !["help", "init"].includes(command!)) {
     error(`Missing environment argument.\n\nUsage: sync-cf-secrets ${command} <env>`);
     process.exit(1);
   }
@@ -84,8 +83,6 @@ async function main(): Promise<void> {
         });
       case "init":
         return init(provider, config, {
-          env: env!,
-          fromDevVars: values["from-dev-vars"]!,
           dryRun: values["dry-run"]!,
           verbose: values.verbose!,
         });

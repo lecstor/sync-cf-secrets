@@ -96,10 +96,11 @@ function discoverEnvironments(
         envs[match[1]] = { item: `${prefix} ${match[1]}` };
       }
     } else {
-      // JSON/JSONC: strip comments then parse
+      // JSON/JSONC: strip comments and trailing commas
       const json = raw
         .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^(\s*)\/\/.*/gm, "$1");
+        .replace(/^(\s*)\/\/.*/gm, "$1")
+        .replace(/,(\s*[}\]])/g, "$1");
       const config = JSON.parse(json);
       if (config.env && typeof config.env === "object") {
         for (const envName of Object.keys(config.env)) {

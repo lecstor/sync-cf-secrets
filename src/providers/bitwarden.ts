@@ -74,6 +74,18 @@ export class BitwardenProvider implements SecretProvider {
     return secrets;
   }
 
+  async exists(opts: FetchOpts): Promise<boolean> {
+    try {
+      exec(
+        `bw get item "${opts.item}"`,
+        { stdio: ["pipe", "pipe", "pipe"] },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async save(opts: SaveOpts): Promise<void> {
     // Build the item template
     const fields = Array.from(opts.secrets.entries()).map(
