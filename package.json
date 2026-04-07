@@ -1,0 +1,42 @@
+{
+  "name": "sync-cf-secrets",
+  "version": "0.1.0",
+  "description": "Sync secrets from your password manager to Cloudflare Workers",
+  "type": "module",
+  "bin": {
+    "sync-cf-secrets": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "tsc"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "secrets",
+    "1password",
+    "bitwarden",
+    "wrangler",
+    "devops"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "peerDependencies": {
+    "wrangler": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "wrangler": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^5.7.0"
+  }
+}
