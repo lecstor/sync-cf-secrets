@@ -1,7 +1,7 @@
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
 import { error, log, success, warn } from "../utils.js";
-import { putSecret, validateWrangler } from "../wrangler.js";
+import { getWranglerVars, putSecret, validateWrangler } from "../wrangler.js";
 
 export interface PushOptions {
   env: string;
@@ -37,7 +37,21 @@ export async function push(
     return;
   }
 
-  log(`Found ${secrets.size} secret(s).`);
+  // Filter out names already defined as vars in wrangler config
+  const wranglerVars = getWranglerVars(opts.env, config.wranglerConfig);
+  const skipped: string[] = [];
+  for (const name of secrets.keys()) {
+    if (wranglerVars.has(name)) {
+      skipped.push(name);
+      secrets.delete(name);
+    }
+  }
+
+  if (skipped.length > 0) {
+    log(`Skipping ${skipped.length} var(s) already in wrangler config: ${skipped.join(", ")}`);
+  }
+
+  log(`Found ${secrets.size} secret(s) to push.`);
 
   if (opts.dryRun) {
     log("\nDry run — would push these secrets:");

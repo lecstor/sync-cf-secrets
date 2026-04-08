@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
 import { error, log, success, warn } from "../utils.js";
+import { getWranglerVars } from "../wrangler.js";
 
 export interface InitOptions {
   dryRun: boolean;
@@ -63,7 +64,28 @@ export async function init(
     return;
   }
 
-  log(`Parsed ${devVars.size} field(s) from ${config.devVarsPath}\n`);
+  // Collect all var names defined in wrangler config (across all envs)
+  const allWranglerVars = new Set<string>();
+  for (const env of Object.keys(config.environments)) {
+    for (const v of getWranglerVars(env, config.wranglerConfig)) {
+      allWranglerVars.add(v);
+    }
+  }
+
+  // Remove wrangler vars from the secrets to store
+  const skipped: string[] = [];
+  for (const name of devVars.keys()) {
+    if (allWranglerVars.has(name)) {
+      skipped.push(name);
+      devVars.delete(name);
+    }
+  }
+
+  if (skipped.length > 0) {
+    log(`Skipping ${skipped.length} var(s) already in wrangler config: ${skipped.join(", ")}`);
+  }
+
+  log(`${devVars.size} secret(s) to store\n`);
 
   // Check which items already exist
   const envNames = Object.keys(config.environments);
