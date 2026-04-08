@@ -19,21 +19,55 @@ Requires Node.js 18.3+ and [wrangler](https://developers.cloudflare.com/workers/
 ## Quick Start
 
 ```bash
-# 1. Bootstrap: create a 1Password item from your existing .dev.vars
-sync-cf-secrets init local --from-dev-vars
+# 1. Bootstrap: create password manager items for all environments
+sync-cf-secrets init
 
-# 2. Push secrets to staging
+# 2. Copy local secrets to staging (most values are the same)
+sync-cf-secrets copy local staging
+
+# 3. Edit staging item in your password manager — change any values that differ
+
+# 4. Push secrets to Cloudflare
 sync-cf-secrets push staging
 
-# 3. Generate .dev.vars for local dev
+# 5. Generate .dev.vars for local dev from password manager
 sync-cf-secrets pull local
 ```
 
 ## Commands
 
+### `init`
+
+Create password manager items for all environments discovered from your wrangler config. Reads field names and values from `.dev.vars`:
+
+- **local** item gets the actual values from `.dev.vars`
+- **staging**, **production**, etc. get the same fields with `CHANGE_ME` placeholders
+
+Any variables already defined as `vars` in your wrangler config are automatically excluded — they're non-secret config and don't belong in the password manager.
+
+If items already exist, you'll be prompted before they're replaced.
+
+```bash
+sync-cf-secrets init
+sync-cf-secrets init --dry-run
+```
+
+### `copy <from> <to>`
+
+Copy secrets from one environment's password manager item to another. Useful when environments share most values (e.g. local and staging both use test/sandbox API keys).
+
+Variables defined as `vars` in the target environment's wrangler config are excluded.
+
+```bash
+sync-cf-secrets copy local staging
+sync-cf-secrets copy staging production
+```
+
 ### `push <env>`
 
 Push secrets from your password manager to a Cloudflare Workers environment.
+
+Variables already defined as `vars` in your wrangler config are automatically skipped.
 
 ```bash
 sync-cf-secrets push staging
@@ -46,14 +80,6 @@ Generate a `.dev.vars` file from your password manager.
 
 ```bash
 sync-cf-secrets pull local
-```
-
-### `init <env> --from-dev-vars`
-
-Bootstrap a password manager item from an existing `.dev.vars` file.
-
-```bash
-sync-cf-secrets init local --from-dev-vars
 ```
 
 ### `list <env>`
@@ -82,6 +108,12 @@ sync-cf-secrets diff production --verbose
 | `--verbose` | Show more detail |
 | `--help` | Show help |
 
+## Wrangler Vars vs Secrets
+
+The tool automatically reads your wrangler config (`wrangler.toml` / `wrangler.jsonc`) and excludes any names defined as `vars`. These are non-secret environment config (like `DEPLOY_ENV` or `AUTH_URL`) that Cloudflare manages as plaintext bindings — pushing them as secrets would cause a "Binding name already in use" error.
+
+This filtering is per-environment, so a variable that's a `var` in staging but not in production is handled correctly.
+
 ## Configuration
 
 Create a `.sync-cf-secrets.json` in your project root (all fields optional):
@@ -106,23 +138,17 @@ Create a `.sync-cf-secrets.json` in your project root (all fields optional):
 - **provider** — auto-detected from available CLIs (`op` or `bw`)
 - **vault** — project name from `package.json`
 - **prefix** — same as vault
-- **wranglerConfig** — auto-searches for `wrangler.toml`, `wrangler.jsonc`, or `wrangler.json`
+- **wranglerConfig** — auto-searches for `wrangler.toml`, `wrangler.jsonc`, or `wrangler.json` (including `apps/web/`)
 - **devVarsPath** — `.dev.vars` next to your wrangler config
-- **environments** — auto-discovered from your wrangler config's `env` block
+- **environments** — auto-discovered from your wrangler config's `env` block, plus `local`
 
 ## Password Manager Setup
 
 ### 1Password
 
-Create a **Secure Note** in your vault for each environment (e.g. "myproject staging"). Add custom fields where the **label** is the env var name and the **value** is the secret.
+The easiest way to get started is `sync-cf-secrets init`, which creates Secure Note items with the right fields. You can also create them manually — one Secure Note per environment with custom fields where the **label** is the env var name and the **value** is the secret.
 
-Or bootstrap from an existing `.dev.vars`:
-
-```bash
-sync-cf-secrets init local --from-dev-vars
-```
-
-Requires the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`).
+Requires the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`). Auth is handled via the 1Password desktop app (biometric/Touch ID).
 
 ### Bitwarden
 
@@ -139,6 +165,7 @@ interface SecretProvider {
   name: string;
   cli: string;
   validate(): Promise<void>;
+  exists(opts: { vault: string; item: string }): Promise<boolean>;
   fetch(opts: { vault: string; item: string }): Promise<Map<string, string>>;
   save(opts: { vault: string; item: string; secrets: Map<string, string> }): Promise<void>;
   listFields(opts: { vault: string; item: string }): Promise<string[]>;
@@ -151,6 +178,7 @@ interface SecretProvider {
 - No intermediate temp files
 - Requires password manager authentication (biometrics/master password)
 - Generated `.dev.vars` files include a "do not commit" warning
+- Duplicate items are detected and cleaned up by unique ID
 
 ## License
 
