@@ -15,7 +15,10 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish"
   },
   "keywords": [
     "cloudflare",
@@ -49,6 +52,7 @@
     }
   },
   "devDependencies": {
+    "@changesets/cli": "^2.30.0",
     "@types/node": "^25.5.2",
     "typescript": "^5.7.0"
   }
