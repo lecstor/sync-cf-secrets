@@ -1,7 +1,7 @@
 {
   "name": "sync-cf-secrets",
   "version": "0.1.0",
-  "description": "Sync secrets from your password manager to Cloudflare Workers",
+  "description": "Sync Cloudflare Workers secrets from 1Password or Bitwarden. Push, pull, and diff secrets across environments.",
   "type": "module",
   "bin": {
     "sync-cf-secrets": "./dist/cli.js"
@@ -16,13 +16,23 @@
   },
   "keywords": [
     "cloudflare",
+    "cloudflare-workers",
     "workers",
     "secrets",
+    "secret-management",
+    "environment-variables",
+    "env",
     "1password",
     "bitwarden",
     "wrangler",
-    "devops"
+    "password-manager",
+    "devops",
+    "cli"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lecstor/sync-cf-secrets"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=18.3.0"
