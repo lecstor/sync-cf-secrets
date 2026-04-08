@@ -18,6 +18,8 @@ interface OpField {
 }
 
 interface OpItem {
+  id: string;
+  title?: string;
   fields?: OpField[];
 }
 
@@ -62,23 +64,35 @@ export class OnePasswordProvider implements SecretProvider {
     return secrets;
   }
 
-  async exists(opts: FetchOpts): Promise<boolean> {
+  /**
+   * Find all item IDs matching a title in a vault.
+   * Uses `op item list` to avoid ambiguity with duplicate names.
+   */
+  private findItemIds(opts: FetchOpts): string[] {
     try {
-      exec(
-        `op item get "${opts.item}" --vault "${opts.vault}" --format json`,
+      const json = exec(
+        `op item list --vault "${opts.vault}" --format json`,
         { stdio: ["pipe", "pipe", "pipe"] },
       );
-      return true;
+      const items: OpItem[] = JSON.parse(json);
+      return items
+        .filter((i) => i.title === opts.item)
+        .map((i) => i.id);
     } catch {
-      return false;
+      return [];
     }
   }
 
+  async exists(opts: FetchOpts): Promise<boolean> {
+    return this.findItemIds(opts).length > 0;
+  }
+
   async save(opts: SaveOpts): Promise<void> {
-    // Delete existing item first — caller is responsible for confirming
-    if (await this.exists(opts)) {
+    // Delete ALL existing items with this name — caller is responsible for confirming
+    const existingIds = this.findItemIds(opts);
+    for (const id of existingIds) {
       execFileSync("op", [
-        "item", "delete", opts.item, "--vault", opts.vault,
+        "item", "delete", id, "--vault", opts.vault,
       ], { stdio: ["pipe", "pipe", "pipe"] });
     }
 
