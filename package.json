@@ -7,11 +7,14 @@
     "sync-cf-secrets": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skill",
+    "scripts/postinstall.js"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "tsc"
   },
   "keywords": [
