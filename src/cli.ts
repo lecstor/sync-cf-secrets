@@ -2,6 +2,7 @@
 
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
+import { copy } from "./commands/copy.js";
 import { diff } from "./commands/diff.js";
 import { init } from "./commands/init.js";
 import { list } from "./commands/list.js";
@@ -16,7 +17,8 @@ sync-cf-secrets — Sync secrets from your password manager to Cloudflare Worker
 Usage:
   sync-cf-secrets push <env>               Push secrets to Cloudflare
   sync-cf-secrets pull <env>               Write .dev.vars from password manager
-  sync-cf-secrets init                         Create items for all environments from .dev.vars
+  sync-cf-secrets init                     Create items for all environments from .dev.vars
+  sync-cf-secrets copy <from> <to>         Copy secrets between environments
   sync-cf-secrets list <env>               List deployed Cloudflare secrets
   sync-cf-secrets diff <env>               Compare password manager vs Cloudflare
 
@@ -31,6 +33,7 @@ Examples:
   sync-cf-secrets push staging --dry-run
   sync-cf-secrets pull local
   sync-cf-secrets init
+  sync-cf-secrets copy local staging
   sync-cf-secrets diff production --verbose
 `.trim();
 
@@ -51,10 +54,13 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const [command, env] = positionals;
+  const [command, env, env2] = positionals;
 
   if (!env && !["help", "init"].includes(command!)) {
-    error(`Missing environment argument.\n\nUsage: sync-cf-secrets ${command} <env>`);
+    const usage = command === "copy"
+      ? "sync-cf-secrets copy <from> <to>"
+      : `sync-cf-secrets ${command} <env>`;
+    error(`Missing argument(s).\n\nUsage: ${usage}`);
     process.exit(1);
   }
 
@@ -64,7 +70,7 @@ async function main(): Promise<void> {
   });
 
   // Commands that need a provider
-  if (command === "push" || command === "pull" || command === "init" || command === "diff") {
+  if (["push", "pull", "init", "copy", "diff"].includes(command!)) {
     const provider = resolveProvider(config.provider);
     await provider.validate();
 
@@ -83,6 +89,17 @@ async function main(): Promise<void> {
         });
       case "init":
         return init(provider, config, {
+          dryRun: values["dry-run"]!,
+          verbose: values.verbose!,
+        });
+      case "copy":
+        if (!env2) {
+          error("Missing target environment.\n\nUsage: sync-cf-secrets copy <from> <to>");
+          process.exit(1);
+        }
+        return copy(provider, config, {
+          from: env!,
+          to: env2,
           dryRun: values["dry-run"]!,
           verbose: values.verbose!,
         });
