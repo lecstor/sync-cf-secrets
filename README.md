@@ -172,6 +172,24 @@ interface SecretProvider {
 }
 ```
 
+## AI Skill
+
+Installing this package automatically registers a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) at `~/.claude/skills/sync-cf-secrets/`. This teaches AI assistants the full command reference and workflow patterns so they can help manage your secrets.
+
+## Contributing
+
+This project uses [changesets](https://github.com/changesets/changesets) for version management.
+
+```bash
+# After making changes, create a changeset
+npm run changeset
+# → interactive prompt: pick patch/minor/major, write a summary
+
+# When ready to release
+npm run version    # bumps package.json version, updates CHANGELOG.md
+npm run release    # builds and publishes to npm
+```
+
 ## Security
 
 - Secret values are piped to wrangler via stdin — never exposed in CLI arguments or process listings
