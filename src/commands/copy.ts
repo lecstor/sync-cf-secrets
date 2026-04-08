@@ -2,6 +2,7 @@ import { createInterface } from "node:readline";
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
 import { error, log, success, warn } from "../utils.js";
+import { getWranglerVars } from "../wrangler.js";
 
 export interface CopyOptions {
   from: string;
@@ -52,7 +53,20 @@ export async function copy(
     return;
   }
 
-  log(`Found ${secrets.size} field(s).\n`);
+  // Filter out vars defined in wrangler config for the target environment
+  const wranglerVars = getWranglerVars(opts.to, config.wranglerConfig);
+  const skipped: string[] = [];
+  for (const name of secrets.keys()) {
+    if (wranglerVars.has(name)) {
+      skipped.push(name);
+      secrets.delete(name);
+    }
+  }
+  if (skipped.length > 0) {
+    log(`Skipping ${skipped.length} wrangler var(s): ${skipped.join(", ")}`);
+  }
+
+  log(`${secrets.size} secret(s) to copy.\n`);
 
   if (opts.dryRun) {
     log(`Dry run — would copy ${secrets.size} field(s) from "${fromEnv.item}" to "${toEnv.item}":`);

@@ -64,28 +64,7 @@ export async function init(
     return;
   }
 
-  // Collect all var names defined in wrangler config (across all envs)
-  const allWranglerVars = new Set<string>();
-  for (const env of Object.keys(config.environments)) {
-    for (const v of getWranglerVars(env, config.wranglerConfig)) {
-      allWranglerVars.add(v);
-    }
-  }
-
-  // Remove wrangler vars from the secrets to store
-  const skipped: string[] = [];
-  for (const name of devVars.keys()) {
-    if (allWranglerVars.has(name)) {
-      skipped.push(name);
-      devVars.delete(name);
-    }
-  }
-
-  if (skipped.length > 0) {
-    log(`Skipping ${skipped.length} var(s) already in wrangler config: ${skipped.join(", ")}`);
-  }
-
-  log(`${devVars.size} secret(s) to store\n`);
+  log(`Parsed ${devVars.size} field(s) from ${config.devVarsPath}\n`);
 
   // Check which items already exist
   const envNames = Object.keys(config.environments);
@@ -118,10 +97,19 @@ export async function init(
     const envConfig = config.environments[env];
     const isLocal = env === "local";
 
-    // Local gets real values, everything else gets placeholders
+    // Filter out vars defined in wrangler config for this environment
+    const wranglerVars = getWranglerVars(env, config.wranglerConfig);
     const secrets = new Map<string, string>();
+    const skipped: string[] = [];
     for (const [name, value] of devVars) {
-      secrets.set(name, isLocal ? value : "CHANGE_ME");
+      if (wranglerVars.has(name)) {
+        skipped.push(name);
+      } else {
+        secrets.set(name, isLocal ? value : "CHANGE_ME");
+      }
+    }
+    if (skipped.length > 0) {
+      log(`  Skipping wrangler var(s): ${skipped.join(", ")}`);
     }
 
     if (opts.dryRun) {
