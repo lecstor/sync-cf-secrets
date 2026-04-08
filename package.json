@@ -1,6 +1,6 @@
 {
   "name": "sync-cf-secrets",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sync Cloudflare Workers secrets from 1Password or Bitwarden. Push, pull, and diff secrets across environments.",
   "type": "module",
   "bin": {
