@@ -122,7 +122,55 @@ describe("init", () => {
     );
   });
 
-  it("prompts confirmation when items exist", async () => {
+  it("unquotes double-quoted values and unescapes \\n, \\\", \\\\", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(
+      [
+        'MULTILINE="line1\\nline2"',
+        'WITH_QUOTE="say \\"hi\\""',
+        'WITH_BACKSLASH="a\\\\b"',
+        'PLAIN="simple"',
+      ].join("\n"),
+    );
+
+    const provider = makeProvider();
+    await init(
+      provider,
+      makeConfig({ environments: { local: { item: "test local" } } }),
+      { dryRun: false, verbose: false },
+    );
+
+    expect(provider.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        item: "test local",
+        secrets: new Map([
+          ["MULTILINE", "line1\nline2"],
+          ["WITH_QUOTE", 'say "hi"'],
+          ["WITH_BACKSLASH", "a\\b"],
+          ["PLAIN", "simple"],
+        ]),
+      }),
+    );
+  });
+
+  it("skips existing items by default (no --force)", async () => {
+    const { warn, log } = await import("../utils.js");
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue("KEY=val");
+    const provider = makeProvider({
+      exists: vi.fn().mockResolvedValue(true),
+    });
+
+    await init(provider, makeConfig(), { dryRun: false, verbose: false });
+
+    // No confirmation prompt, no save calls — existing items are skipped
+    expect(mockCreateInterface).not.toHaveBeenCalled();
+    expect(provider.save).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Skipping"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("--force"));
+  });
+
+  it("prompts confirmation when items exist and --force is set", async () => {
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue("KEY=val");
     const provider = makeProvider({
@@ -130,12 +178,13 @@ describe("init", () => {
     });
     mockConfirm("y");
 
-    await init(provider, makeConfig(), { dryRun: false, verbose: false });
+    await init(provider, makeConfig(), { dryRun: false, verbose: false, force: true });
 
     expect(mockCreateInterface).toHaveBeenCalled();
+    expect(provider.save).toHaveBeenCalled();
   });
 
-  it("aborts when user declines confirmation", async () => {
+  it("aborts when user declines confirmation with --force", async () => {
     const { log } = await import("../utils.js");
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue("KEY=val");
@@ -144,7 +193,7 @@ describe("init", () => {
     });
     mockConfirm("n");
 
-    await init(provider, makeConfig(), { dryRun: false, verbose: false });
+    await init(provider, makeConfig(), { dryRun: false, verbose: false, force: true });
 
     expect(log).toHaveBeenCalledWith("Aborted.");
     expect(provider.save).not.toHaveBeenCalled();
