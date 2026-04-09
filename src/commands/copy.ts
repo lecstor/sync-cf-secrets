@@ -7,6 +7,7 @@ import { getWranglerVars } from "../wrangler.js";
 export interface CopyOptions {
   from: string;
   to: string;
+  fields?: string[];
   dryRun: boolean;
   verbose: boolean;
 }
@@ -66,6 +67,23 @@ export async function copy(
     log(`Skipping ${skipped.length} wrangler var(s): ${skipped.join(", ")}`);
   }
 
+  // Filter to specific fields if --fields is set
+  if (opts.fields) {
+    const requested = new Set(opts.fields);
+    const unknown = opts.fields.filter((f) => !secrets.has(f));
+    if (unknown.length > 0) {
+      throw new Error(
+        `Field(s) not found in "${fromEnv.item}": ${unknown.join(", ")}\n` +
+          `Available: ${Array.from(secrets.keys()).sort().join(", ")}`,
+      );
+    }
+    for (const name of secrets.keys()) {
+      if (!requested.has(name)) {
+        secrets.delete(name);
+      }
+    }
+  }
+
   log(`${secrets.size} secret(s) to copy.\n`);
 
   if (opts.dryRun) {
@@ -76,7 +94,34 @@ export async function copy(
     return;
   }
 
-  // Check if target exists
+  // When copying specific fields, merge into the existing target item
+  if (opts.fields) {
+    const targetExists = await provider.exists({ vault: config.vault, item: toEnv.item });
+    if (targetExists) {
+      const existing = await provider.fetch({ vault: config.vault, item: toEnv.item });
+      // Merge: existing values are overwritten by the selected fields
+      for (const [name, value] of secrets) {
+        existing.set(name, value);
+      }
+      log(`Merging ${secrets.size} field(s) into "${toEnv.item}" (${existing.size} total)...`);
+      try {
+        await provider.save({
+          vault: config.vault,
+          item: toEnv.item,
+          secrets: existing,
+        });
+        success(`Updated ${secrets.size} field(s) in "${toEnv.item}".`);
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        error(`Failed to update "${toEnv.item}": ${msg}`);
+        return;
+      }
+    }
+    // Target doesn't exist — fall through to create it with just these fields
+  }
+
+  // Full copy: check if target exists and confirm replacement
   if (await provider.exists({ vault: config.vault, item: toEnv.item })) {
     warn(`"${toEnv.item}" already exists in ${provider.name}.`);
     const confirmed = await confirm("Delete and replace it?");
@@ -96,7 +141,9 @@ export async function copy(
       secrets,
     });
     success(`Copied ${secrets.size} field(s) from "${fromEnv.item}" to "${toEnv.item}".`);
-    log(`  → Open ${provider.name} and update any values that differ for ${opts.to}.`);
+    if (!opts.fields) {
+      log(`  → Open ${provider.name} and update any values that differ for ${opts.to}.`);
+    }
   } catch (err: unknown) {
     if (err && typeof err === "object" && "stderr" in err) {
       const stderr = (err as { stderr: Buffer | string }).stderr;

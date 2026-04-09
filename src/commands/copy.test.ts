@@ -193,3 +193,161 @@ describe("copy", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining("generic"));
   });
 });
+
+describe("copy --fields", () => {
+  it("throws when a requested field is missing from the source", async () => {
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(
+        new Map([
+          ["API_KEY", "sk-123"],
+          ["DB_URL", "postgres://localhost"],
+        ]),
+      ),
+    });
+
+    await expect(
+      copy(provider, makeConfig(), {
+        from: "local",
+        to: "staging",
+        fields: ["API_KEY", "MISSING"],
+        dryRun: false,
+        verbose: false,
+      }),
+    ).rejects.toThrow(/Field\(s\) not found.*MISSING/);
+  });
+
+  it("merges selected fields into an existing target item without prompting", async () => {
+    const sourceSecrets = new Map([
+      ["API_KEY", "sk-NEW"],
+      ["DB_URL", "postgres://prod"],
+      ["UNRELATED", "ignored"],
+    ]);
+    const targetSecrets = new Map([
+      ["API_KEY", "sk-OLD"],
+      ["EXISTING_OTHER", "keep-me"],
+    ]);
+    const provider = makeProvider({
+      fetch: vi
+        .fn()
+        .mockResolvedValueOnce(sourceSecrets) // first call: source
+        .mockResolvedValueOnce(targetSecrets), // second call: existing target
+      exists: vi.fn().mockResolvedValue(true),
+    });
+
+    await copy(provider, makeConfig(), {
+      from: "local",
+      to: "staging",
+      fields: ["API_KEY"],
+      dryRun: false,
+      verbose: false,
+    });
+
+    // No confirmation prompt for merge flow
+    expect(mockCreateInterface).not.toHaveBeenCalled();
+    // Save called with merged map: API_KEY overwritten, EXISTING_OTHER kept
+    expect(provider.save).toHaveBeenCalledWith({
+      vault: "test-vault",
+      item: "test staging",
+      secrets: new Map([
+        ["API_KEY", "sk-NEW"],
+        ["EXISTING_OTHER", "keep-me"],
+      ]),
+    });
+  });
+
+  it("falls through to a fresh create when target does not exist", async () => {
+    const sourceSecrets = new Map([
+      ["API_KEY", "sk-123"],
+      ["DB_URL", "postgres://localhost"],
+    ]);
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(sourceSecrets),
+      exists: vi.fn().mockResolvedValue(false),
+    });
+
+    await copy(provider, makeConfig(), {
+      from: "local",
+      to: "staging",
+      fields: ["API_KEY"],
+      dryRun: false,
+      verbose: false,
+    });
+
+    // No confirmation prompt because target doesn't exist
+    expect(mockCreateInterface).not.toHaveBeenCalled();
+    // Save called with only the selected field
+    expect(provider.save).toHaveBeenCalledWith({
+      vault: "test-vault",
+      item: "test staging",
+      secrets: new Map([["API_KEY", "sk-123"]]),
+    });
+  });
+
+  it("does not print the 'update values that differ' tip when --fields is set", async () => {
+    const { log } = await import("../utils.js");
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(new Map([["API_KEY", "sk-123"]])),
+      exists: vi.fn().mockResolvedValue(false),
+    });
+
+    await copy(provider, makeConfig(), {
+      from: "local",
+      to: "staging",
+      fields: ["API_KEY"],
+      dryRun: false,
+      verbose: false,
+    });
+
+    const logCalls = vi.mocked(log).mock.calls.map((call) => String(call[0]));
+    expect(
+      logCalls.some((msg) => msg.includes("update any values that differ")),
+    ).toBe(false);
+  });
+
+  it("dry run with --fields lists selected names without saving", async () => {
+    const { log } = await import("../utils.js");
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(
+        new Map([
+          ["API_KEY", "sk-123"],
+          ["DB_URL", "postgres://localhost"],
+        ]),
+      ),
+    });
+
+    await copy(provider, makeConfig(), {
+      from: "local",
+      to: "staging",
+      fields: ["API_KEY"],
+      dryRun: true,
+      verbose: false,
+    });
+
+    expect(provider.save).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("  API_KEY");
+    const logCalls = vi.mocked(log).mock.calls.map((call) => String(call[0]));
+    expect(logCalls.some((msg) => msg.includes("DB_URL"))).toBe(false);
+  });
+
+  it("reports merge save errors via error()", async () => {
+    const { error } = await import("../utils.js");
+    const provider = makeProvider({
+      fetch: vi
+        .fn()
+        .mockResolvedValueOnce(new Map([["API_KEY", "sk-NEW"]]))
+        .mockResolvedValueOnce(new Map([["EXISTING", "x"]])),
+      exists: vi.fn().mockResolvedValue(true),
+      save: vi.fn().mockRejectedValue(new Error("merge boom")),
+    });
+
+    await copy(provider, makeConfig(), {
+      from: "local",
+      to: "staging",
+      fields: ["API_KEY"],
+      dryRun: false,
+      verbose: false,
+    });
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("merge boom"));
+  });
+});
