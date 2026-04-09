@@ -1,15 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execFileSync } from "node:child_process";
 import { OnePasswordProvider } from "./onepassword.js";
-import { cliExists, exec } from "../utils.js";
-
-vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
-  execFileSync: vi.fn(),
-}));
+import { cliExists, execFile } from "../utils.js";
 
 vi.mock("../utils.js", () => ({
   exec: vi.fn(),
+  execFile: vi.fn(),
   execSilent: vi.fn(),
   cliExists: vi.fn(),
   log: vi.fn(),
@@ -19,8 +14,7 @@ vi.mock("../utils.js", () => ({
 }));
 
 const mockCliExists = vi.mocked(cliExists);
-const mockExec = vi.mocked(exec);
-const mockExecFileSync = vi.mocked(execFileSync);
+const mockExecFile = vi.mocked(execFile);
 
 let provider: OnePasswordProvider;
 
@@ -39,20 +33,20 @@ describe("validate", () => {
 
   it("succeeds when op whoami succeeds", async () => {
     mockCliExists.mockReturnValue(true);
-    mockExec.mockReturnValue("user@example.com");
+    mockExecFile.mockReturnValue("user@example.com");
     await expect(provider.validate()).resolves.toBeUndefined();
   });
 
   it("throws auth error when service token set but auth fails", async () => {
     mockCliExists.mockReturnValue(true);
-    mockExec.mockImplementation(() => { throw new Error("auth failed"); });
+    mockExecFile.mockImplementation(() => { throw new Error("auth failed"); });
     vi.stubEnv("OP_SERVICE_ACCOUNT_TOKEN", "test-token");
     await expect(provider.validate()).rejects.toThrow("OP_SERVICE_ACCOUNT_TOKEN is set but authentication failed");
   });
 
   it("throws sign-in error when no token and auth fails", async () => {
     mockCliExists.mockReturnValue(true);
-    mockExec.mockImplementation(() => { throw new Error("auth failed"); });
+    mockExecFile.mockImplementation(() => { throw new Error("auth failed"); });
     await expect(provider.validate()).rejects.toThrow("Not signed in to 1Password");
   });
 });
@@ -69,8 +63,18 @@ describe("fetch", () => {
     ],
   };
 
+  it("passes item and vault as argv (no shell)", async () => {
+    mockExecFile.mockReturnValue(JSON.stringify(opItemResponse));
+    await provider.fetch({ vault: "test-vault", item: "test-item" });
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "op",
+      ["item", "get", "test-item", "--vault", "test-vault", "--format", "json"],
+      expect.any(Object),
+    );
+  });
+
   it("parses JSON response and filters builtin fields", async () => {
-    mockExec.mockReturnValue(JSON.stringify(opItemResponse));
+    mockExecFile.mockReturnValue(JSON.stringify(opItemResponse));
     const secrets = await provider.fetch({ vault: "test-vault", item: "test-item" });
     expect(secrets).toEqual(
       new Map([
@@ -81,7 +85,7 @@ describe("fetch", () => {
   });
 
   it("filters out NOTES purpose fields", async () => {
-    mockExec.mockReturnValue(
+    mockExecFile.mockReturnValue(
       JSON.stringify({
         id: "x",
         fields: [
@@ -96,7 +100,7 @@ describe("fetch", () => {
   });
 
   it("skips fields without label or undefined value", async () => {
-    mockExec.mockReturnValue(
+    mockExecFile.mockReturnValue(
       JSON.stringify({
         id: "x",
         fields: [
@@ -112,7 +116,7 @@ describe("fetch", () => {
   });
 
   it("returns empty map when no fields", async () => {
-    mockExec.mockReturnValue(JSON.stringify({ id: "x" }));
+    mockExecFile.mockReturnValue(JSON.stringify({ id: "x" }));
     const secrets = await provider.fetch({ vault: "v", item: "i" });
     expect(secrets.size).toBe(0);
   });
@@ -120,29 +124,29 @@ describe("fetch", () => {
 
 describe("exists", () => {
   it("returns true when items found", async () => {
-    mockExec.mockReturnValue(
+    mockExecFile.mockReturnValue(
       JSON.stringify([{ id: "abc", title: "test-item" }]),
     );
     expect(await provider.exists({ vault: "v", item: "test-item" })).toBe(true);
   });
 
   it("returns false when no matching items", async () => {
-    mockExec.mockReturnValue(
+    mockExecFile.mockReturnValue(
       JSON.stringify([{ id: "abc", title: "other-item" }]),
     );
     expect(await provider.exists({ vault: "v", item: "test-item" })).toBe(false);
   });
 
   it("returns false on error", async () => {
-    mockExec.mockImplementation(() => { throw new Error("fail"); });
+    mockExecFile.mockImplementation(() => { throw new Error("fail"); });
     expect(await provider.exists({ vault: "v", item: "test-item" })).toBe(false);
   });
 });
 
 describe("save", () => {
   it("deletes existing items and creates new Secure Note", async () => {
-    // findItemIds returns two existing items
-    mockExec.mockReturnValue(
+    // findItemIds returns two existing items; then item create is called
+    mockExecFile.mockReturnValue(
       JSON.stringify([
         { id: "id1", title: "my-item" },
         { id: "id2", title: "my-item" },
@@ -156,20 +160,17 @@ describe("save", () => {
 
     await provider.save({ vault: "test-vault", item: "my-item", secrets });
 
-    // Should delete both existing items
-    expect(mockExecFileSync).toHaveBeenCalledWith(
+    expect(mockExecFile).toHaveBeenCalledWith(
       "op",
       ["item", "delete", "id1", "--vault", "test-vault"],
       expect.any(Object),
     );
-    expect(mockExecFileSync).toHaveBeenCalledWith(
+    expect(mockExecFile).toHaveBeenCalledWith(
       "op",
       ["item", "delete", "id2", "--vault", "test-vault"],
       expect.any(Object),
     );
-
-    // Should create new item with field args
-    expect(mockExecFileSync).toHaveBeenCalledWith(
+    expect(mockExecFile).toHaveBeenCalledWith(
       "op",
       [
         "item", "create",
@@ -184,7 +185,7 @@ describe("save", () => {
   });
 
   it("creates item without deleting when none exist", async () => {
-    mockExec.mockReturnValue(JSON.stringify([]));
+    mockExecFile.mockReturnValue(JSON.stringify([]));
 
     await provider.save({
       vault: "v",
@@ -192,8 +193,7 @@ describe("save", () => {
       secrets: new Map([["KEY", "val"]]),
     });
 
-    // No delete calls (only the create call)
-    const deleteCalls = mockExecFileSync.mock.calls.filter(
+    const deleteCalls = mockExecFile.mock.calls.filter(
       (call) => Array.isArray(call[1]) && call[1].includes("delete"),
     );
     expect(deleteCalls).toHaveLength(0);
@@ -202,7 +202,7 @@ describe("save", () => {
 
 describe("listFields", () => {
   it("returns keys from fetch", async () => {
-    mockExec.mockReturnValue(
+    mockExecFile.mockReturnValue(
       JSON.stringify({
         id: "x",
         fields: [

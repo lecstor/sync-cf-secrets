@@ -1,5 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
-import { cliExists, exec } from "../utils.js";
+import { cliExists, execFile } from "../utils.js";
 import type { FetchOpts, SaveOpts, SecretProvider } from "./types.js";
 
 /** Built-in field IDs that 1Password adds automatically */
@@ -36,7 +35,7 @@ export class OnePasswordProvider implements SecretProvider {
     }
 
     try {
-      exec("op whoami", { stdio: ["pipe", "pipe", "pipe"] });
+      execFile("op", ["whoami"], { stdio: ["pipe", "pipe", "pipe"] });
     } catch {
       const hasServiceToken = !!process.env.OP_SERVICE_ACCOUNT_TOKEN;
       if (hasServiceToken) {
@@ -56,8 +55,9 @@ export class OnePasswordProvider implements SecretProvider {
   }
 
   async fetch(opts: FetchOpts): Promise<Map<string, string>> {
-    const json = exec(
-      `op item get "${opts.item}" --vault "${opts.vault}" --format json`,
+    const json = execFile(
+      "op",
+      ["item", "get", opts.item, "--vault", opts.vault, "--format", "json"],
       { stdio: ["pipe", "pipe", "pipe"] },
     );
 
@@ -80,8 +80,9 @@ export class OnePasswordProvider implements SecretProvider {
    */
   private findItemIds(opts: FetchOpts): string[] {
     try {
-      const json = exec(
-        `op item list --vault "${opts.vault}" --format json`,
+      const json = execFile(
+        "op",
+        ["item", "list", "--vault", opts.vault, "--format", "json"],
         { stdio: ["pipe", "pipe", "pipe"] },
       );
       const items: OpItem[] = JSON.parse(json);
@@ -101,9 +102,11 @@ export class OnePasswordProvider implements SecretProvider {
     // Delete ALL existing items with this name — caller is responsible for confirming
     const existingIds = this.findItemIds(opts);
     for (const id of existingIds) {
-      execFileSync("op", [
-        "item", "delete", id, "--vault", opts.vault,
-      ], { stdio: ["pipe", "pipe", "pipe"] });
+      execFile(
+        "op",
+        ["item", "delete", id, "--vault", opts.vault],
+        { stdio: ["pipe", "pipe", "pipe"] },
+      );
     }
 
     // Create Secure Note with all fields as positional args (no shell escaping needed)
@@ -111,16 +114,23 @@ export class OnePasswordProvider implements SecretProvider {
     const fieldArgs = Array.from(opts.secrets.entries())
       .map(([label, value]) => `${label}[password]=${value}`);
 
-    execFileSync("op", [
-      "item", "create",
-      "--category", "Secure Note",
-      "--vault", opts.vault,
-      "--title", opts.item,
-      ...fieldArgs,
-    ], { stdio: ["pipe", "pipe", "pipe"] });
+    execFile(
+      "op",
+      [
+        "item", "create",
+        "--category", "Secure Note",
+        "--vault", opts.vault,
+        "--title", opts.item,
+        ...fieldArgs,
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
   }
 
   async listFields(opts: FetchOpts): Promise<string[]> {
+    // NOTE: The `op` CLI doesn't expose a field-list endpoint that omits
+    // values, so we still fetch the full item. Values stay inside the
+    // process boundary — we discard them immediately.
     const secrets = await this.fetch(opts);
     return Array.from(secrets.keys());
   }

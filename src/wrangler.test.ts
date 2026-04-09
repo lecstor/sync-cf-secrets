@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { getWranglerVars, validateWrangler, putSecret, listSecrets } from "./wrangler.js";
-import { cliExists, exec } from "./utils.js";
-
-vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
-}));
+import {
+  getWranglerVars,
+  validateWrangler,
+  putSecret,
+  listSecrets,
+} from "./wrangler.js";
+import { cliExists, execFile } from "./utils.js";
 
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),
@@ -14,13 +14,13 @@ vi.mock("node:fs", () => ({
 
 vi.mock("./utils.js", () => ({
   exec: vi.fn(),
+  execFile: vi.fn(),
   cliExists: vi.fn(),
 }));
 
-const mockExecSync = vi.mocked(execSync);
 const mockReadFileSync = vi.mocked(readFileSync);
 const mockCliExists = vi.mocked(cliExists);
-const mockExec = vi.mocked(exec);
+const mockExecFile = vi.mocked(execFile);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -103,11 +103,12 @@ describe("validateWrangler", () => {
 });
 
 describe("putSecret", () => {
-  it("calls execSync with correct command for non-local env", () => {
+  it("invokes wrangler via execFile with argv array for non-local env", () => {
     mockCliExists.mockImplementation((name) => name === "wrangler");
     putSecret("API_KEY", "secret-value", "staging", "/fake/wrangler.toml");
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'wrangler secret put API_KEY --env staging --config "/fake/wrangler.toml"',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "wrangler",
+      ["secret", "put", "API_KEY", "--env", "staging", "--config", "/fake/wrangler.toml"],
       { input: "secret-value", stdio: ["pipe", "pipe", "pipe"] },
     );
   });
@@ -115,8 +116,9 @@ describe("putSecret", () => {
   it("omits --env flag for local environment", () => {
     mockCliExists.mockImplementation((name) => name === "wrangler");
     putSecret("API_KEY", "secret-value", "local", "/fake/wrangler.toml");
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'wrangler secret put API_KEY --config "/fake/wrangler.toml"',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "wrangler",
+      ["secret", "put", "API_KEY", "--config", "/fake/wrangler.toml"],
       { input: "secret-value", stdio: ["pipe", "pipe", "pipe"] },
     );
   });
@@ -124,8 +126,21 @@ describe("putSecret", () => {
   it("falls back to npx wrangler when wrangler not found", () => {
     mockCliExists.mockImplementation((name) => name === "npx");
     putSecret("KEY", "val", "staging", "/fake/wrangler.toml");
-    expect(mockExecSync).toHaveBeenCalledWith(
-      expect.stringContaining("npx wrangler secret put KEY"),
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "npx",
+      ["wrangler", "secret", "put", "KEY", "--env", "staging", "--config", "/fake/wrangler.toml"],
+      expect.any(Object),
+    );
+  });
+
+  it("does not shell-inject names with metacharacters", () => {
+    mockCliExists.mockImplementation((name) => name === "wrangler");
+    // A secret name with special chars would've been a shell injection vector
+    // via the old exec-string approach; now it's an argv entry.
+    putSecret("WEIRD; rm -rf /", "val", "local", "/fake/wrangler.toml");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "wrangler",
+      ["secret", "put", "WEIRD; rm -rf /", "--config", "/fake/wrangler.toml"],
       expect.any(Object),
     );
   });
@@ -134,7 +149,7 @@ describe("putSecret", () => {
 describe("listSecrets", () => {
   it("parses JSON array and returns sorted names", () => {
     mockCliExists.mockImplementation((name) => name === "wrangler");
-    mockExec.mockReturnValue(
+    mockExecFile.mockReturnValue(
       JSON.stringify([
         { name: "ZEBRA", type: "secret_text" },
         { name: "ALPHA", type: "secret_text" },
@@ -145,7 +160,7 @@ describe("listSecrets", () => {
 
   it("returns empty array on parse failure", () => {
     mockCliExists.mockImplementation((name) => name === "wrangler");
-    mockExec.mockImplementation(() => {
+    mockExecFile.mockImplementation(() => {
       throw new Error("failed");
     });
     expect(listSecrets("staging", "/fake/wrangler.toml")).toEqual([]);
@@ -153,10 +168,11 @@ describe("listSecrets", () => {
 
   it("omits --env for local", () => {
     mockCliExists.mockImplementation((name) => name === "wrangler");
-    mockExec.mockReturnValue("[]");
+    mockExecFile.mockReturnValue("[]");
     listSecrets("local", "/fake/wrangler.toml");
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.not.stringContaining("--env"),
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "wrangler",
+      expect.not.arrayContaining(["--env"]),
       expect.any(Object),
     );
   });

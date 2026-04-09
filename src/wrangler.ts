@@ -1,18 +1,6 @@
-import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { cliExists, exec } from "./utils.js";
-
-/**
- * Parse a JSONC wrangler config, stripping comments and trailing commas.
- */
-function parseWranglerConfig(configPath: string): Record<string, unknown> {
-  const raw = readFileSync(configPath, "utf-8");
-  const json = raw
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^(\s*)\/\/.*/gm, "$1")
-    .replace(/,(\s*[}\]])/g, "$1");
-  return JSON.parse(json);
-}
+import { cliExists, execFile } from "./utils.js";
+import { parseJsonc } from "./jsonc.js";
 
 /**
  * Get var names defined in the wrangler config for a given environment.
@@ -26,7 +14,8 @@ export function getWranglerVars(
   const varNames = new Set<string>();
 
   try {
-    const config = parseWranglerConfig(wranglerConfig);
+    const raw = readFileSync(wranglerConfig, "utf-8");
+    const config = parseJsonc(raw);
 
     // Top-level vars
     const topVars = config.vars as Record<string, string> | undefined;
@@ -66,8 +55,13 @@ export function validateWrangler(): void {
   }
 }
 
-function wranglerBin(): string {
-  return cliExists("wrangler") ? "wrangler" : "npx wrangler";
+/**
+ * Return the wrangler invocation as [binary, prefixArgs], so callers can
+ * build an argv array and invoke via execFile (no shell).
+ */
+function wranglerCommand(): { bin: string; prefix: string[] } {
+  if (cliExists("wrangler")) return { bin: "wrangler", prefix: [] };
+  return { bin: "npx", prefix: ["wrangler"] };
 }
 
 /**
@@ -80,14 +74,14 @@ export function putSecret(
   env: string,
   wranglerConfig: string,
 ): void {
-  const envFlag = env === "local" ? "" : ` --env ${env}`;
-  execSync(
-    `${wranglerBin()} secret put ${name}${envFlag} --config "${wranglerConfig}"`,
-    {
-      input: value,
-      stdio: ["pipe", "pipe", "pipe"],
-    },
-  );
+  const { bin, prefix } = wranglerCommand();
+  const args = [...prefix, "secret", "put", name];
+  if (env !== "local") args.push("--env", env);
+  args.push("--config", wranglerConfig);
+  execFile(bin, args, {
+    input: value,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
 }
 
 /**
@@ -97,12 +91,12 @@ export function listSecrets(
   env: string,
   wranglerConfig: string,
 ): string[] {
-  const envFlag = env === "local" ? "" : ` --env ${env}`;
+  const { bin, prefix } = wranglerCommand();
+  const args = [...prefix, "secret", "list"];
+  if (env !== "local") args.push("--env", env);
+  args.push("--config", wranglerConfig);
   try {
-    const raw = exec(
-      `${wranglerBin()} secret list${envFlag} --config "${wranglerConfig}"`,
-      { stdio: ["pipe", "pipe", "pipe"] },
-    );
+    const raw = execFile(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
     // Wrangler outputs JSON array of { name, type }
     const parsed = JSON.parse(raw) as Array<{ name: string }>;
     return parsed.map((s) => s.name).sort();
