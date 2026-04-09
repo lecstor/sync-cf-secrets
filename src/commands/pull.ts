@@ -2,11 +2,35 @@ import { writeFileSync } from "node:fs";
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
 import { log, success, warn } from "../utils.js";
+import { getWranglerVars } from "../wrangler.js";
 
 export interface PullOptions {
   env: string;
   dryRun: boolean;
   verbose: boolean;
+}
+
+/**
+ * Format a value for `.dev.vars`. Wraps in double quotes (and escapes \\, ",
+ * \n) if the raw form would not round-trip cleanly through `parseDevVars`.
+ *
+ * Quoting is required when the value contains newlines, embedded quotes,
+ * backslashes, or has leading/trailing whitespace. We also quote values that
+ * happen to start with a `"` so they aren't mistaken for an already-quoted
+ * literal on the read side.
+ */
+function formatDevVarValue(value: string): string {
+  const needsQuoting =
+    /[\n\r"\\]/.test(value) ||
+    value !== value.trim() ||
+    value.startsWith('"');
+  if (!needsQuoting) return value;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r");
+  return `"${escaped}"`;
 }
 
 export async function pull(
@@ -23,13 +47,40 @@ export async function pull(
   }
 
   log(`Fetching secrets from ${provider.name} (${envConfig.item})...`);
-  const secrets = await provider.fetch({
+  const fetched = await provider.fetch({
     vault: config.vault,
     item: envConfig.item,
   });
 
-  if (secrets.size === 0) {
+  if (fetched.size === 0) {
     warn(`No secrets found in ${provider.name} item "${envConfig.item}".`);
+    return;
+  }
+
+  // Drop anything that wrangler exposes as a non-secret var. The same name
+  // appearing in both `vars` and `.dev.vars` would shadow each other and
+  // confuse local dev — wrangler vars win, so we don't need to mirror them.
+  const wranglerVars = getWranglerVars(opts.env, config.wranglerConfig);
+  const secrets = new Map<string, string>();
+  const skipped: string[] = [];
+  for (const [name, value] of fetched) {
+    if (wranglerVars.has(name)) {
+      skipped.push(name);
+    } else {
+      secrets.set(name, value);
+    }
+  }
+
+  if (skipped.length > 0) {
+    warn(
+      `Skipping ${skipped.length} field(s) defined as wrangler vars: ${skipped.join(", ")}`,
+    );
+  }
+
+  if (secrets.size === 0) {
+    warn(
+      `All fields in "${envConfig.item}" are wrangler vars — nothing to write.`,
+    );
     return;
   }
 
@@ -45,7 +96,7 @@ export async function pull(
   ];
 
   for (const [name, value] of secrets) {
-    lines.push(`${name}=${value}`);
+    lines.push(`${name}=${formatDevVarValue(value)}`);
   }
 
   lines.push(""); // trailing newline

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { writeFileSync } from "node:fs";
 import { pull } from "./pull.js";
+import { getWranglerVars } from "../wrangler.js";
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
 
@@ -8,8 +9,13 @@ vi.mock("node:fs", () => ({
   writeFileSync: vi.fn(),
 }));
 
+vi.mock("../wrangler.js", () => ({
+  getWranglerVars: vi.fn(() => new Set<string>()),
+}));
+
 vi.mock("../utils.js", () => ({
   exec: vi.fn(),
+  execFile: vi.fn(),
   execSilent: vi.fn(),
   cliExists: vi.fn(),
   log: vi.fn(),
@@ -19,6 +25,7 @@ vi.mock("../utils.js", () => ({
 }));
 
 const mockWriteFileSync = vi.mocked(writeFileSync);
+const mockGetWranglerVars = vi.mocked(getWranglerVars);
 
 function makeConfig(overrides?: Partial<Config>): Config {
   return {
@@ -49,6 +56,7 @@ function makeProvider(overrides?: Partial<SecretProvider>): SecretProvider {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetWranglerVars.mockReturnValue(new Set<string>());
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2025-01-15T10:30:00.000Z"));
 });
@@ -106,5 +114,115 @@ describe("pull", () => {
     expect(mockWriteFileSync).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(expect.stringContaining("Dry run"));
     expect(log).toHaveBeenCalledWith("  API_KEY");
+  });
+
+  it("filters out fields that are defined as wrangler vars", async () => {
+    const { warn } = await import("../utils.js");
+    mockGetWranglerVars.mockReturnValue(new Set(["PUBLIC_URL"]));
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(
+        new Map([
+          ["PUBLIC_URL", "https://example.com"],
+          ["API_KEY", "sk-123"],
+        ]),
+      ),
+    });
+
+    await pull(provider, makeConfig(), {
+      env: "staging",
+      dryRun: false,
+      verbose: false,
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Skipping 1 field(s) defined as wrangler vars"),
+    );
+    const content = mockWriteFileSync.mock.calls[0][1] as string;
+    expect(content).toContain("API_KEY=sk-123");
+    expect(content).not.toContain("PUBLIC_URL");
+  });
+
+  it("warns and skips writing when every field is a wrangler var", async () => {
+    const { warn } = await import("../utils.js");
+    mockGetWranglerVars.mockReturnValue(new Set(["A", "B"]));
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(
+        new Map([
+          ["A", "1"],
+          ["B", "2"],
+        ]),
+      ),
+    });
+
+    await pull(provider, makeConfig(), {
+      env: "staging",
+      dryRun: false,
+      verbose: false,
+    });
+
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("are wrangler vars — nothing to write"),
+    );
+  });
+
+  it("quotes values containing newlines, quotes, or backslashes", async () => {
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(
+        new Map([
+          ["MULTILINE", "line1\nline2"],
+          ["QUOTED", 'he said "hi"'],
+          ["BACKSLASH", "path\\to\\file"],
+          ["PLAIN", "simple"],
+        ]),
+      ),
+    });
+
+    await pull(provider, makeConfig(), {
+      env: "staging",
+      dryRun: false,
+      verbose: false,
+    });
+
+    const content = mockWriteFileSync.mock.calls[0][1] as string;
+    expect(content).toContain('MULTILINE="line1\\nline2"');
+    expect(content).toContain('QUOTED="he said \\"hi\\""');
+    expect(content).toContain('BACKSLASH="path\\\\to\\\\file"');
+    expect(content).toContain("PLAIN=simple");
+  });
+
+  it("quotes values with leading or trailing whitespace", async () => {
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(
+        new Map([["PADDED", "  spaced  "]]),
+      ),
+    });
+
+    await pull(provider, makeConfig(), {
+      env: "staging",
+      dryRun: false,
+      verbose: false,
+    });
+
+    const content = mockWriteFileSync.mock.calls[0][1] as string;
+    expect(content).toContain('PADDED="  spaced  "');
+  });
+
+  it("does not call getWranglerVars during dry run skip path", async () => {
+    // sanity: dry run still passes env to wrangler-var lookup so the
+    // skip warning matches what a real pull would do
+    mockGetWranglerVars.mockReturnValue(new Set<string>());
+    const provider = makeProvider({
+      fetch: vi.fn().mockResolvedValue(new Map([["KEY", "val"]])),
+    });
+    await pull(provider, makeConfig(), {
+      env: "staging",
+      dryRun: true,
+      verbose: false,
+    });
+    expect(mockGetWranglerVars).toHaveBeenCalledWith(
+      "staging",
+      "/fake/wrangler.toml",
+    );
   });
 });
