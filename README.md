@@ -192,12 +192,12 @@ This project uses [changesets](https://github.com/changesets/changesets) for ver
 
 ```bash
 # After making changes, create a changeset
-npm run changeset
+pnpm run changeset
 # → interactive prompt: pick patch/minor/major, write a summary
 
 # When ready to release
-npm run version    # bumps package.json version, updates CHANGELOG.md
-npm run release    # builds and publishes to npm
+pnpm run version    # bumps package.json version, updates CHANGELOG.md
+pnpm run release    # builds and publishes to npm
 ```
 
 ## Security

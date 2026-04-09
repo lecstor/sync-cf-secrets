@@ -18,7 +18,7 @@
     "prepublishOnly": "tsc",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "pnpm run build && changeset publish"
   },
   "keywords": [
     "cloudflare",
