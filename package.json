@@ -12,13 +12,15 @@
     "scripts/postinstall.js"
   ],
   "scripts": {
-    "build": "tsc",
+    "clean": "rm -rf dist",
+    "build": "pnpm run clean && tsc",
     "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "tsc",
+    "prepublishOnly": "pnpm run build",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish"
@@ -44,7 +46,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18.3.0"
+    "node": ">=20.0.0"
   },
   "peerDependencies": {
     "wrangler": ">=3.0.0"
