@@ -1,5 +1,11 @@
 # sync-cf-secrets
 
+## 0.3.1
+
+### Patch Changes
+
+- Add comprehensive Vitest test suite (137 tests) and switch package manager to pnpm
+
 ## 0.3.0
 
 ### Minor Changes
