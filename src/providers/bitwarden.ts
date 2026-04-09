@@ -1,5 +1,4 @@
-import { execSync } from "node:child_process";
-import { cliExists, exec } from "../utils.js";
+import { cliExists, execFile } from "../utils.js";
 import type { FetchOpts, SaveOpts, SecretProvider } from "./types.js";
 
 interface BwField {
@@ -13,10 +12,68 @@ interface BwItem {
   name: string;
   fields?: BwField[];
   notes?: string;
+  organizationId?: string | null;
+}
+
+interface BwOrganization {
+  id: string;
+  name: string;
 }
 
 interface BwStatus {
   status: string;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve a vault name to a Bitwarden organization ID.
+ *
+ * - Empty string or "personal" → undefined (personal vault)
+ * - UUID-shaped string → returned as-is (escape hatch for explicit IDs)
+ * - Anything else → looked up by name via `bw list organizations`
+ */
+function resolveOrgId(vaultName: string): string | undefined {
+  if (!vaultName || vaultName.toLowerCase() === "personal") return undefined;
+  if (UUID_RE.test(vaultName)) return vaultName;
+
+  const raw = execFile("bw", ["list", "organizations"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const orgs: BwOrganization[] = JSON.parse(raw);
+  const match = orgs.find((o) => o.name === vaultName);
+  if (!match) {
+    const available = orgs.map((o) => o.name).join(", ") || "(none)";
+    throw new Error(
+      `Bitwarden organization "${vaultName}" not found. Available: ${available}\n` +
+        'Use "personal" for your personal vault, pass an organization name, ' +
+        "or set vault to an organization UUID.",
+    );
+  }
+  return match.id;
+}
+
+/**
+ * Find an item by exact name, optionally scoped to an organization.
+ * Returns null when no exact match is found.
+ */
+function findItem(name: string, orgId?: string): BwItem | null {
+  const args = ["list", "items", "--search", name];
+  if (orgId) args.push("--organizationid", orgId);
+  try {
+    const raw = execFile("bw", args, { stdio: ["pipe", "pipe", "pipe"] });
+    const items: BwItem[] = JSON.parse(raw);
+    // --search uses substring matching; filter to exact name
+    // and (if orgId given) the same org scope.
+    return (
+      items.find(
+        (i) => i.name === name && (!orgId || i.organizationId === orgId),
+      ) ?? null
+    );
+  } catch {
+    return null;
+  }
 }
 
 export class BitwardenProvider implements SecretProvider {
@@ -32,7 +89,9 @@ export class BitwardenProvider implements SecretProvider {
     }
 
     try {
-      const raw = exec("bw status", { stdio: ["pipe", "pipe", "pipe"] });
+      const raw = execFile("bw", ["status"], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       const status: BwStatus = JSON.parse(raw);
       if (status.status !== "unlocked") {
         throw new Error("locked");
@@ -53,40 +112,32 @@ export class BitwardenProvider implements SecretProvider {
   }
 
   async fetch(opts: FetchOpts): Promise<Map<string, string>> {
-    // Bitwarden doesn't have per-vault item get; use search + filter
-    const json = exec(
-      `bw get item "${opts.item}" --organizationid "${opts.vault}"`,
-      { stdio: ["pipe", "pipe", "pipe"] },
-    );
-
-    const item: BwItem = JSON.parse(json);
-    const secrets = new Map<string, string>();
-
-    // Prefer custom fields
-    if (item.fields && item.fields.length > 0) {
-      for (const field of item.fields) {
-        if (field.name && field.value !== undefined) {
-          secrets.set(field.name, field.value);
-        }
-      }
+    const orgId = resolveOrgId(opts.vault);
+    const item = findItem(opts.item, orgId);
+    if (!item) {
+      const where = orgId
+        ? `organization "${opts.vault}"`
+        : "personal vault";
+      throw new Error(`Item "${opts.item}" not found in Bitwarden ${where}.`);
     }
 
+    const secrets = new Map<string, string>();
+    for (const field of item.fields ?? []) {
+      if (field.name && field.value !== undefined) {
+        secrets.set(field.name, field.value);
+      }
+    }
     return secrets;
   }
 
   async exists(opts: FetchOpts): Promise<boolean> {
-    try {
-      exec(
-        `bw get item "${opts.item}"`,
-        { stdio: ["pipe", "pipe", "pipe"] },
-      );
-      return true;
-    } catch {
-      return false;
-    }
+    const orgId = resolveOrgId(opts.vault);
+    return findItem(opts.item, orgId) !== null;
   }
 
   async save(opts: SaveOpts): Promise<void> {
+    const orgId = resolveOrgId(opts.vault);
+
     // Build the item template
     const fields = Array.from(opts.secrets.entries()).map(
       ([name, value]) => ({
@@ -102,41 +153,33 @@ export class BitwardenProvider implements SecretProvider {
       notes: "",
       secureNote: { type: 0 },
       fields,
-      organizationId: opts.vault !== "null" ? opts.vault : undefined,
+      organizationId: orgId,
     };
 
     const encoded = Buffer.from(JSON.stringify(template)).toString("base64");
 
-    // Check if item exists
-    let existingId: string | null = null;
-    try {
-      const raw = exec(
-        `bw get item "${opts.item}"`,
-        { stdio: ["pipe", "pipe", "pipe"] },
-      );
-      const existing: BwItem = JSON.parse(raw);
-      existingId = existing.id;
-    } catch {
-      // Item doesn't exist
-    }
+    // Look up the existing item (if any) so we can edit in place
+    const existing = findItem(opts.item, orgId);
 
-    if (existingId) {
-      execSync(`echo '${encoded}' | bw edit item ${existingId}`, {
+    if (existing) {
+      execFile("bw", ["edit", "item", existing.id], {
+        input: encoded,
         stdio: ["pipe", "pipe", "pipe"],
-        shell: "/bin/sh",
       });
     } else {
-      execSync(`echo '${encoded}' | bw create item`, {
+      execFile("bw", ["create", "item"], {
+        input: encoded,
         stdio: ["pipe", "pipe", "pipe"],
-        shell: "/bin/sh",
       });
     }
 
     // Sync to server
-    execSync("bw sync", { stdio: ["pipe", "pipe", "pipe"] });
+    execFile("bw", ["sync"], { stdio: ["pipe", "pipe", "pipe"] });
   }
 
   async listFields(opts: FetchOpts): Promise<string[]> {
+    // NOTE: The `bw` CLI has no field-only lookup, so we fetch the full
+    // item and discard values. Values stay within the process boundary.
     const secrets = await this.fetch(opts);
     return Array.from(secrets.keys());
   }
