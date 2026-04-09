@@ -10,6 +10,7 @@ import { pull } from "./commands/pull.js";
 import { push } from "./commands/push.js";
 import { resolveProvider } from "./providers/index.js";
 import { error } from "./utils.js";
+import { VERSION } from "./version.js";
 
 const USAGE = `
 sync-cf-secrets — Sync secrets from your password manager to Cloudflare Workers
@@ -19,14 +20,18 @@ Usage:
   sync-cf-secrets pull <env>               Write .dev.vars from password manager
   sync-cf-secrets init                     Create items for all environments from .dev.vars
   sync-cf-secrets copy <from> <to>         Copy secrets between environments
+  sync-cf-secrets copy <from> <to> --fields A,B  Copy specific fields only
   sync-cf-secrets list <env>               List deployed Cloudflare secrets
   sync-cf-secrets diff <env>               Compare password manager vs Cloudflare
 
 Options:
   --provider <name>   Password manager: 1password, bitwarden (auto-detected)
   --vault <name>      Override vault name
+  --fields <a,b,...>  Only copy specific fields (for copy command)
+  --force             Replace existing items (for init command)
   --dry-run           Show what would happen without doing it
   --verbose           Show more detail
+  --version           Print the installed version
   --help              Show this help
 
 Examples:
@@ -43,11 +48,19 @@ async function main(): Promise<void> {
     options: {
       provider: { type: "string" },
       vault: { type: "string" },
+      fields: { type: "string" },
+      force: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
+      version: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
+
+  if (values.version) {
+    console.log(VERSION);
+    process.exit(0);
+  }
 
   if (values.help || positionals.length === 0) {
     console.log(USAGE);
@@ -91,6 +104,7 @@ async function main(): Promise<void> {
         return init(provider, config, {
           dryRun: values["dry-run"]!,
           verbose: values.verbose!,
+          force: values.force!,
         });
       case "copy":
         if (!env2) {
@@ -100,6 +114,7 @@ async function main(): Promise<void> {
         return copy(provider, config, {
           from: env!,
           to: env2,
+          fields: values.fields?.split(",").map((f) => f.trim()),
           dryRun: values["dry-run"]!,
           verbose: values.verbose!,
         });
@@ -121,7 +136,7 @@ async function main(): Promise<void> {
   process.exit(1);
 }
 
-main().catch((err: Error) => {
-  error(err.message);
+main().catch((err: unknown) => {
+  error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
