@@ -135,7 +135,7 @@ Create a `.sync-cf-secrets.json` in your project root (all fields optional):
 
 ### Defaults
 
-- **provider** — auto-detected from available CLIs (`op` or `bw`)
+- **provider** — auto-detected (prefers 1Password SDK when `OP_SERVICE_ACCOUNT_TOKEN` is set, then `op` CLI, then `bw` CLI)
 - **vault** — project name from `package.json`
 - **prefix** — same as vault
 - **wranglerConfig** — auto-searches for `wrangler.toml`, `wrangler.jsonc`, or `wrangler.json` (including `apps/web/`)
@@ -148,17 +148,17 @@ Create a `.sync-cf-secrets.json` in your project root (all fields optional):
 
 The easiest way to get started is `sync-cf-secrets init`, which creates Secure Note items with the right fields. You can also create them manually — one Secure Note per environment with custom fields where the **label** is the env var name and the **value** is the secret.
 
-Requires the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`, version 2.18.0+).
+**Two backends are available:**
 
-**Interactive use:** Auth is handled via the 1Password desktop app (biometric/Touch ID).
-
-**Non-interactive use (CI, AI agents):** Create a [service account](https://developer.1password.com/docs/service-accounts/) and set `OP_SERVICE_ACCOUNT_TOKEN`:
+**1. JavaScript SDK (recommended for CI/AI agents):** When `OP_SERVICE_ACCOUNT_TOKEN` is set, the tool uses the [@1password/sdk](https://www.npmjs.com/package/@1password/sdk) package directly — no CLI binary needed. This works in sandboxed environments (Claude Code, CI containers, etc.) where the `op` CLI can't run.
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
 ```
 
-The service account needs read/write access to the vault. Note: service accounts can only access custom vaults (not Personal/Private).
+Create a [service account](https://developer.1password.com/docs/service-accounts/) with read/write access to the vault. Service accounts can only access custom vaults (not Personal/Private).
+
+**2. CLI (`op`):** For interactive use with biometric/Touch ID auth via the [1Password desktop app](https://developer.1password.com/docs/cli/get-started/). Requires `op` CLI version 2.18.0+. Used automatically when no service account token is set.
 
 ### Bitwarden
 

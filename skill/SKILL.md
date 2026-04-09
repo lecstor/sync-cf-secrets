@@ -24,7 +24,7 @@ Help users manage Cloudflare Workers secrets using the `sync-cf-secrets` CLI, wh
 ### Design Principles
 
 - Auto-discovers environments from the wrangler config (`wrangler.toml` / `wrangler.jsonc`)
-- Auto-detects the password manager CLI (`op` for 1Password, `bw` for Bitwarden)
+- Auto-detects the password manager (1Password SDK when `OP_SERVICE_ACCOUNT_TOKEN` is set, `op` CLI, or `bw` CLI)
 - Config is optional — sensible defaults from `package.json` and wrangler config
 - Secret values are piped via stdin to wrangler, never exposed in CLI arguments
 
@@ -173,7 +173,7 @@ All fields have defaults: `provider` auto-detected, `vault`/`prefix` from `packa
 
 ### For AI agents (non-interactive)
 
-The `op` CLI requires biometric auth by default, which doesn't work in non-interactive terminals. To use `sync-cf-secrets` from an AI agent, the user must set up a **1Password service account**:
+When `OP_SERVICE_ACCOUNT_TOKEN` is set, the tool uses the 1Password JavaScript SDK directly — no CLI binary needed. This works in sandboxed environments (Claude Code, CI containers) where the `op` CLI can't run.
 
 1. Ask the user to create a service account at https://my.1password.com/ (Developer → Service Accounts)
 2. The service account needs **read and write** access to the vault used for secrets
@@ -181,7 +181,7 @@ The `op` CLI requires biometric auth by default, which doesn't work in non-inter
    ```bash
    export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
    ```
-4. Once set, all `sync-cf-secrets` commands work without biometric prompts
+4. Once set, all `sync-cf-secrets` commands work without biometric prompts or the `op` CLI
 
 **Important limitations of service accounts:**
 - Cannot access Personal, Private, or the default Shared vault — only custom vaults
@@ -197,5 +197,6 @@ If `OP_SERVICE_ACCOUNT_TOKEN` is not set and `op whoami` fails, guide the user t
 
 ### Prerequisites
 
-- `op` CLI (>= 2.18.0) or `bw` CLI installed
+- **1Password**: Either `OP_SERVICE_ACCOUNT_TOKEN` set (uses JS SDK, no CLI needed) or `op` CLI (>= 2.18.0) installed
+- **Bitwarden**: `bw` CLI installed
 - `wrangler` installed (for `push`, `list`, `diff` commands)
