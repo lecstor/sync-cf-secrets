@@ -1,4 +1,9 @@
-import { execSync, type ExecSyncOptions } from "node:child_process";
+import {
+  execFileSync,
+  execSync,
+  type ExecFileSyncOptions,
+  type ExecSyncOptions,
+} from "node:child_process";
 
 export function exec(
   cmd: string,
@@ -16,8 +21,26 @@ export function execSilent(cmd: string): string | null {
   }
 }
 
+/**
+ * Run a binary with argv — safe from shell injection. Returns trimmed stdout.
+ */
+export function execFile(
+  file: string,
+  args: string[],
+  opts?: ExecFileSyncOptions,
+): string {
+  const result = execFileSync(file, args, { encoding: "utf-8", ...opts });
+  return (result as string).trim();
+}
+
 export function cliExists(name: string): boolean {
-  return execSilent(`which ${name}`) !== null;
+  const cmd = process.platform === "win32" ? "where" : "which";
+  try {
+    execFileSync(cmd, [name], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function log(msg: string): void {

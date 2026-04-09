@@ -1,12 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execSync } from "node:child_process";
-import { exec, execSilent, cliExists, log, warn, error, success } from "./utils.js";
+import { execSync, execFileSync } from "node:child_process";
+import {
+  exec,
+  execFile,
+  execSilent,
+  cliExists,
+  log,
+  warn,
+  error,
+  success,
+} from "./utils.js";
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
 const mockExecSync = vi.mocked(execSync);
+const mockExecFileSync = vi.mocked(execFileSync);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -52,17 +63,68 @@ describe("execSilent", () => {
   });
 });
 
+describe("execFile", () => {
+  it("returns trimmed stdout", () => {
+    mockExecFileSync.mockReturnValue("  hello  \n");
+    expect(execFile("op", ["item", "list"])).toBe("hello");
+    expect(mockExecFileSync).toHaveBeenCalledWith("op", ["item", "list"], {
+      encoding: "utf-8",
+    });
+  });
+
+  it("passes options through", () => {
+    mockExecFileSync.mockReturnValue("ok");
+    execFile("bw", ["status"], { stdio: ["pipe", "pipe", "pipe"] });
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      "bw",
+      ["status"],
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+  });
+
+  it("throws when command fails", () => {
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error("exec failed");
+    });
+    expect(() => execFile("bad", [])).toThrow("exec failed");
+  });
+});
+
 describe("cliExists", () => {
-  it("returns true when which succeeds", () => {
-    mockExecSync.mockReturnValue("/usr/bin/op");
+  it("returns true when lookup succeeds", () => {
+    mockExecFileSync.mockReturnValue(Buffer.from("/usr/bin/op"));
     expect(cliExists("op")).toBe(true);
   });
 
-  it("returns false when which fails", () => {
-    mockExecSync.mockImplementation(() => {
+  it("returns false when lookup fails", () => {
+    mockExecFileSync.mockImplementation(() => {
       throw new Error("not found");
     });
     expect(cliExists("nonexistent")).toBe(false);
+  });
+
+  it("uses 'where' on win32 and 'which' elsewhere", () => {
+    mockExecFileSync.mockReturnValue(Buffer.from("ok"));
+    const originalPlatform = process.platform;
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      cliExists("op");
+      expect(mockExecFileSync).toHaveBeenLastCalledWith(
+        "where",
+        ["op"],
+        expect.any(Object),
+      );
+
+      Object.defineProperty(process, "platform", { value: "linux" });
+      cliExists("op");
+      expect(mockExecFileSync).toHaveBeenLastCalledWith(
+        "which",
+        ["op"],
+        expect.any(Object),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
   });
 });
 

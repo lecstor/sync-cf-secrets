@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { parseJsonc } from "./jsonc.js";
 
 export interface EnvironmentConfig {
   item: string;
@@ -96,14 +97,10 @@ function discoverEnvironments(
         envs[match[1]] = { item: `${prefix} ${match[1]}` };
       }
     } else {
-      // JSON/JSONC: strip comments and trailing commas
-      const json = raw
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^(\s*)\/\/.*/gm, "$1")
-        .replace(/,(\s*[}\]])/g, "$1");
-      const config = JSON.parse(json);
+      // JSON/JSONC
+      const config = parseJsonc(raw);
       if (config.env && typeof config.env === "object") {
-        for (const envName of Object.keys(config.env)) {
+        for (const envName of Object.keys(config.env as Record<string, unknown>)) {
           envs[envName] = { item: `${prefix} ${envName}` };
         }
       }
