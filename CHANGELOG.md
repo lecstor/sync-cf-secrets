@@ -1,5 +1,11 @@
 # sync-cf-secrets
 
+## 0.3.0
+
+### Minor Changes
+
+- Add 1Password JavaScript SDK as an alternative provider backend. When `OP_SERVICE_ACCOUNT_TOKEN` is set, the tool now uses `@1password/sdk` directly instead of shelling out to the `op` CLI. This enables use in sandboxed and non-interactive environments (Claude Code, CI containers) where the CLI binary can't run. The diff command also now correctly filters wrangler vars from comparisons.
+
 ## 0.2.0
 
 ### Minor Changes
