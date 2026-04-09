@@ -1,7 +1,7 @@
 import type { Config } from "../config.js";
 import type { SecretProvider } from "../providers/types.js";
 import { error, log, success, warn } from "../utils.js";
-import { listSecrets, validateWrangler } from "../wrangler.js";
+import { getWranglerVars, listSecrets, validateWrangler } from "../wrangler.js";
 
 export interface DiffOptions {
   env: string;
@@ -25,12 +25,14 @@ export async function diff(
 
   log(`Comparing ${provider.name} item "${envConfig.item}" vs Cloudflare ${opts.env}...\n`);
 
-  // Fetch field names from provider
+  // Fetch field names from provider, excluding wrangler vars
+  const wranglerVars = getWranglerVars(opts.env, config.wranglerConfig);
+  const allFields = await provider.listFields({
+    vault: config.vault,
+    item: envConfig.item,
+  });
   const providerFields = new Set(
-    await provider.listFields({
-      vault: config.vault,
-      item: envConfig.item,
-    }),
+    allFields.filter((name) => !wranglerVars.has(name)),
   );
 
   // Fetch deployed secret names from Cloudflare

@@ -1,19 +1,27 @@
 import { cliExists } from "../utils.js";
 import { BitwardenProvider } from "./bitwarden.js";
 import { OnePasswordProvider } from "./onepassword.js";
+import { OnePasswordSDKProvider } from "./onepassword-sdk.js";
 import type { SecretProvider } from "./types.js";
 
 export type { SecretProvider } from "./types.js";
 
-const PROVIDERS: Array<() => SecretProvider> = [
-  () => new OnePasswordProvider(),
-  () => new BitwardenProvider(),
-];
+/**
+ * Pick the best 1Password provider:
+ * - SDK (via @1password/sdk) when OP_SERVICE_ACCOUNT_TOKEN is set — works in non-interactive environments
+ * - CLI (via op) as fallback — requires biometric auth or desktop app
+ */
+function onePasswordProvider(): SecretProvider {
+  if (process.env.OP_SERVICE_ACCOUNT_TOKEN) {
+    return new OnePasswordSDKProvider();
+  }
+  return new OnePasswordProvider();
+}
 
 const PROVIDER_MAP: Record<string, () => SecretProvider> = {
-  "1password": () => new OnePasswordProvider(),
-  onepassword: () => new OnePasswordProvider(),
-  op: () => new OnePasswordProvider(),
+  "1password": onePasswordProvider,
+  onepassword: onePasswordProvider,
+  op: onePasswordProvider,
   bitwarden: () => new BitwardenProvider(),
   bw: () => new BitwardenProvider(),
 };
@@ -31,21 +39,28 @@ export function getProvider(name: string): SecretProvider {
 }
 
 /**
- * Auto-detect which provider is available by checking for CLI tools.
+ * Auto-detect which provider is available by checking for CLI tools or env vars.
  */
 export function detectProvider(): SecretProvider {
-  for (const factory of PROVIDERS) {
-    const provider = factory();
-    if (cliExists(provider.cli)) {
-      return provider;
-    }
+  // Prefer SDK when service account token is available
+  if (process.env.OP_SERVICE_ACCOUNT_TOKEN) {
+    return new OnePasswordSDKProvider();
+  }
+
+  // Fall back to CLI detection
+  if (cliExists("op")) {
+    return new OnePasswordProvider();
+  }
+  if (cliExists("bw")) {
+    return new BitwardenProvider();
   }
 
   throw new Error(
-    "No supported password manager CLI found.\n" +
-      "Install one of:\n" +
-      "  - 1Password CLI (op): https://developer.1password.com/docs/cli/\n" +
-      "  - Bitwarden CLI (bw): https://bitwarden.com/help/cli/",
+    "No supported password manager found.\n" +
+      "Options:\n" +
+      "  - Set OP_SERVICE_ACCOUNT_TOKEN for 1Password (no CLI needed)\n" +
+      "  - Install 1Password CLI (op): https://developer.1password.com/docs/cli/\n" +
+      "  - Install Bitwarden CLI (bw): https://bitwarden.com/help/cli/",
   );
 }
 
