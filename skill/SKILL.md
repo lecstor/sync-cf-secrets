@@ -99,9 +99,12 @@ sync-cf-secrets init --dry-run
 
 Copy secrets from one environment's password manager item to another. Excludes wrangler `vars` for the target environment. Prompts before replacing the target.
 
+Use `--fields` to copy specific fields only — this merges into the existing target item rather than replacing it.
+
 ```bash
 sync-cf-secrets copy local staging
 sync-cf-secrets copy staging production
+sync-cf-secrets copy staging production --fields GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET
 sync-cf-secrets copy local staging --dry-run
 ```
 
@@ -148,6 +151,7 @@ sync-cf-secrets diff production --verbose
 |---|---|
 | `--provider <name>` | Force a provider: `1password`, `bitwarden` |
 | `--vault <name>` | Override the vault name |
+| `--fields <a,b,...>` | Only copy specific fields (merges into target) |
 | `--dry-run` | Preview without making changes |
 | `--verbose` | Show more detail |
 

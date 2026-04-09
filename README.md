@@ -14,7 +14,7 @@ npm install -g sync-cf-secrets
 npm install -D sync-cf-secrets
 ```
 
-Requires Node.js 18.3+ and [wrangler](https://developers.cloudflare.com/workers/wrangler/) installed.
+Requires Node.js 20+ and [wrangler](https://developers.cloudflare.com/workers/wrangler/) installed.
 
 ## Quick Start
 
@@ -58,9 +58,12 @@ Copy secrets from one environment's password manager item to another. Useful whe
 
 Variables defined as `vars` in the target environment's wrangler config are excluded.
 
+Use `--fields` to copy specific fields only — this merges into the existing target item instead of replacing it:
+
 ```bash
 sync-cf-secrets copy local staging
 sync-cf-secrets copy staging production
+sync-cf-secrets copy staging production --fields GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET
 ```
 
 ### `push <env>`
@@ -104,6 +107,7 @@ sync-cf-secrets diff production --verbose
 |---|---|
 | `--provider <name>` | Password manager: `1password`, `bitwarden` (auto-detected by default) |
 | `--vault <name>` | Override vault name |
+| `--fields <a,b,...>` | Only copy specific fields (for `copy` command) |
 | `--dry-run` | Show what would happen without doing it |
 | `--verbose` | Show more detail |
 | `--help` | Show help |
@@ -184,7 +188,13 @@ interface SecretProvider {
 
 ## AI Skill
 
-Installing this package automatically registers a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) at `~/.claude/skills/sync-cf-secrets/`. This teaches AI assistants the full command reference and workflow patterns so they can help manage your secrets.
+A `postinstall` script automatically copies a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) to `~/.claude/skills/sync-cf-secrets/`. This teaches AI assistants the full command reference and workflow patterns so they can help manage your secrets — for example, asking Claude to "copy staging secrets to production" will run the right command.
+
+If you're using **pnpm**, you'll need to approve the postinstall script first:
+
+```bash
+pnpm approve-builds sync-cf-secrets
+```
 
 ## Contributing
 
