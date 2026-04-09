@@ -201,14 +201,18 @@ pnpm approve-builds sync-cf-secrets
 This project uses [changesets](https://github.com/changesets/changesets) for version management.
 
 ```bash
-# After making changes, create a changeset
-pnpm run changeset
+# After making changes, create a changeset and commit it alongside the change
+pnpm changeset
 # → interactive prompt: pick patch/minor/major, write a summary
 
 # When ready to release
-pnpm run version    # bumps package.json version, updates CHANGELOG.md
-pnpm run release    # builds and publishes to npm
+pnpm prepare-release   # guards (clean tree, pending changeset, typecheck/test/build),
+                       # then runs `changeset version` and commits as "Version X.Y.Z"
+git push origin main   # push the version commit so CI runs before publish
+pnpm release           # build → publish to npm → create vX.Y.Z tag → git push --follow-tags
 ```
+
+See `CLAUDE.md` for the full architecture and release notes.
 
 ## Security
 
