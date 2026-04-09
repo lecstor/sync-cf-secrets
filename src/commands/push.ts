@@ -62,12 +62,12 @@ export async function push(
   }
 
   let succeeded = 0;
-  let failed = 0;
   const total = secrets.size;
   const failures: string[] = [];
+  let index = 0;
 
   for (const [name, value] of secrets) {
-    const index = succeeded + failed + 1;
+    index++;
     try {
       process.stdout.write(`[${index}/${total}] ${name} ... `);
       putSecret(name, value, opts.env, config.wranglerConfig);
@@ -78,14 +78,14 @@ export async function push(
       const msg = err instanceof Error ? err.message : String(err);
       error(`  ${msg}`);
       failures.push(name);
-      failed++;
     }
   }
 
   log("");
-  if (failed > 0) {
-    error(`${failed} secret(s) failed: ${failures.join(", ")}`);
+  if (failures.length > 0) {
+    error(`${failures.length} secret(s) failed: ${failures.join(", ")}`);
     process.exitCode = 1;
+  } else {
+    success(`${succeeded}/${total} secret(s) pushed to ${opts.env}.`);
   }
-  success(`${succeeded}/${total} secret(s) pushed to ${opts.env}.`);
 }

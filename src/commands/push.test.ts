@@ -137,7 +137,7 @@ describe("push", () => {
   });
 
   it("tracks failures and sets exitCode", async () => {
-    const { error } = await import("../utils.js");
+    const { error, success } = await import("../utils.js");
     mockPutSecret.mockImplementation(() => { throw new Error("network error"); });
     const secrets = new Map([["A", "1"]]);
     const provider = makeProvider({ fetch: vi.fn().mockResolvedValue(secrets) });
@@ -146,6 +146,24 @@ describe("push", () => {
 
     expect(error).toHaveBeenCalledWith(expect.stringContaining("1 secret(s) failed"));
     expect(process.exitCode).toBe(1);
+    // Success should NOT be reported when any secret failed
+    expect(success).not.toHaveBeenCalled();
+  });
+
+  it("does not report success when some secrets fail", async () => {
+    const { success } = await import("../utils.js");
+    let callCount = 0;
+    mockPutSecret.mockImplementation(() => {
+      callCount++;
+      if (callCount === 2) throw new Error("boom");
+    });
+    const secrets = new Map([["A", "1"], ["B", "2"]]);
+    const provider = makeProvider({ fetch: vi.fn().mockResolvedValue(secrets) });
+
+    await push(provider, makeConfig(), { env: "staging", dryRun: false, verbose: false });
+
+    expect(process.exitCode).toBe(1);
+    expect(success).not.toHaveBeenCalled();
   });
 
   it("reports success count", async () => {
@@ -156,5 +174,6 @@ describe("push", () => {
     await push(provider, makeConfig(), { env: "staging", dryRun: false, verbose: false });
 
     expect(success).toHaveBeenCalledWith("2/2 secret(s) pushed to staging.");
+    expect(process.exitCode).toBeUndefined();
   });
 });
