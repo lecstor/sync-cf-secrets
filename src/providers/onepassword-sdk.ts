@@ -1,3 +1,4 @@
+import { VERSION } from "../version.js";
 import type { FetchOpts, SaveOpts, SecretProvider } from "./types.js";
 
 // Lazy-loaded SDK types
@@ -28,7 +29,7 @@ async function getClient(): Promise<Client> {
       return createClient({
         auth: token,
         integrationName: "sync-cf-secrets",
-        integrationVersion: "1.0.0",
+        integrationVersion: VERSION,
       });
     })();
   }
