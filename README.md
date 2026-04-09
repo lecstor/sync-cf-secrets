@@ -148,7 +148,17 @@ Create a `.sync-cf-secrets.json` in your project root (all fields optional):
 
 The easiest way to get started is `sync-cf-secrets init`, which creates Secure Note items with the right fields. You can also create them manually — one Secure Note per environment with custom fields where the **label** is the env var name and the **value** is the secret.
 
-Requires the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`). Auth is handled via the 1Password desktop app (biometric/Touch ID).
+Requires the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`, version 2.18.0+).
+
+**Interactive use:** Auth is handled via the 1Password desktop app (biometric/Touch ID).
+
+**Non-interactive use (CI, AI agents):** Create a [service account](https://developer.1password.com/docs/service-accounts/) and set `OP_SERVICE_ACCOUNT_TOKEN`:
+
+```bash
+export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
+```
+
+The service account needs read/write access to the vault. Note: service accounts can only access custom vaults (not Personal/Private).
 
 ### Bitwarden
 

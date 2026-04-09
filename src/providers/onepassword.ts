@@ -38,9 +38,19 @@ export class OnePasswordProvider implements SecretProvider {
     try {
       exec("op whoami", { stdio: ["pipe", "pipe", "pipe"] });
     } catch {
+      const hasServiceToken = !!process.env.OP_SERVICE_ACCOUNT_TOKEN;
+      if (hasServiceToken) {
+        throw new Error(
+          "OP_SERVICE_ACCOUNT_TOKEN is set but authentication failed.\n" +
+            "Check that the token is valid and the service account has vault access.",
+        );
+      }
       throw new Error(
-        "Not signed in to 1Password.\n" +
-          "Run: eval $(op signin)",
+        "Not signed in to 1Password.\n\n" +
+          "Interactive use (biometric):\n" +
+          "  Open the 1Password desktop app and try again.\n\n" +
+          "Non-interactive use (CI, AI agents):\n" +
+          "  Set OP_SERVICE_ACCOUNT_TOKEN — see https://developer.1password.com/docs/service-accounts/",
       );
     }
   }

@@ -169,8 +169,33 @@ Optional `.sync-cf-secrets.json` in project root:
 
 All fields have defaults: `provider` auto-detected, `vault`/`prefix` from `package.json` name, `wranglerConfig` auto-searched, `devVarsPath` next to wrangler config, environments auto-discovered from wrangler config `env` block.
 
-## Prerequisites
+## Authentication
 
-- **1Password**: `op` CLI installed, authenticated via the desktop app (biometric)
+### For AI agents (non-interactive)
+
+The `op` CLI requires biometric auth by default, which doesn't work in non-interactive terminals. To use `sync-cf-secrets` from an AI agent, the user must set up a **1Password service account**:
+
+1. Ask the user to create a service account at https://my.1password.com/ (Developer → Service Accounts)
+2. The service account needs **read and write** access to the vault used for secrets
+3. The user sets the token as an environment variable:
+   ```bash
+   export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
+   ```
+4. Once set, all `sync-cf-secrets` commands work without biometric prompts
+
+**Important limitations of service accounts:**
+- Cannot access Personal, Private, or the default Shared vault — only custom vaults
+- The vault must be explicitly granted to the service account during creation
+- The token is shown once at creation — it must be saved immediately
+
+If `OP_SERVICE_ACCOUNT_TOKEN` is not set and `op whoami` fails, guide the user through this setup.
+
+### For interactive use
+
+- **1Password**: `op` CLI installed, authenticated via the desktop app (biometric/Touch ID)
 - **Bitwarden**: `bw` CLI installed, `bw login` + `export BW_SESSION=$(bw unlock --raw)`
+
+### Prerequisites
+
+- `op` CLI (>= 2.18.0) or `bw` CLI installed
 - `wrangler` installed (for `push`, `list`, `diff` commands)
