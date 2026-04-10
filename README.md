@@ -188,12 +188,20 @@ interface SecretProvider {
 
 ## AI Skill
 
-A `postinstall` script automatically copies a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) to `~/.claude/skills/sync-cf-secrets/`. This teaches AI assistants the full command reference and workflow patterns so they can help manage your secrets — for example, asking Claude to "copy staging secrets to production" will run the right command.
+A [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) is bundled with this package. It teaches AI assistants the full command reference and workflow patterns so they can help manage your secrets — for example, asking Claude to "copy staging secrets to production" will run the right command.
 
-If you're using **pnpm**, you'll need to approve the postinstall script first:
+To install it:
 
 ```bash
-pnpm approve-builds sync-cf-secrets
+sync-cf-secrets install-skill
+```
+
+This copies the skill to `~/.claude/skills/sync-cf-secrets/`. Claude Code picks it up automatically from there.
+
+To see where the bundled skill file lives (e.g. to copy it to a different tool's skill directory):
+
+```bash
+sync-cf-secrets reveal-skill
 ```
 
 ## Contributing

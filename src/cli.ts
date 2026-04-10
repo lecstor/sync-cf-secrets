@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import { existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
 import { copy } from "./commands/copy.js";
@@ -23,6 +27,8 @@ Usage:
   sync-cf-secrets copy <from> <to> --fields A,B  Copy specific fields only
   sync-cf-secrets list <env>               List deployed Cloudflare secrets
   sync-cf-secrets diff <env>               Compare password manager vs Cloudflare
+  sync-cf-secrets install-skill            Install the Claude Code skill
+  sync-cf-secrets reveal-skill             Print the bundled skill file path
 
 Options:
   --provider <name>   Password manager: 1password, bitwarden (auto-detected)
@@ -69,12 +75,20 @@ async function main(): Promise<void> {
 
   const [command, env, env2] = positionals;
 
-  if (!env && !["help", "init"].includes(command!)) {
+  if (!env && !["help", "init", "install-skill", "reveal-skill"].includes(command!)) {
     const usage = command === "copy"
       ? "sync-cf-secrets copy <from> <to>"
       : `sync-cf-secrets ${command} <env>`;
     error(`Missing argument(s).\n\nUsage: ${usage}`);
     process.exit(1);
+  }
+
+  if (command === "install-skill") {
+    return installSkill();
+  }
+
+  if (command === "reveal-skill") {
+    return revealSkill();
   }
 
   const config = loadConfig({
@@ -134,6 +148,36 @@ async function main(): Promise<void> {
   error(`Unknown command "${command}".\n`);
   console.log(USAGE);
   process.exit(1);
+}
+
+function skillSourcePath(): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  return join(__dirname, "..", "skill", "SKILL.md");
+}
+
+function revealSkill(): void {
+  const source = skillSourcePath();
+  if (!existsSync(source)) {
+    error("Skill file not found — this shouldn't happen in a normal install.");
+    process.exit(1);
+  }
+  console.log(source);
+}
+
+function installSkill(): void {
+  const skillSource = skillSourcePath();
+
+  if (!existsSync(skillSource)) {
+    error("Skill file not found — this shouldn't happen in a normal install.");
+    process.exit(1);
+  }
+
+  const skillDir = join(homedir(), ".claude", "skills", "sync-cf-secrets");
+  const skillTarget = join(skillDir, "SKILL.md");
+
+  mkdirSync(skillDir, { recursive: true });
+  copyFileSync(skillSource, skillTarget);
+  console.log(`Installed Claude Code skill to ${skillTarget}`);
 }
 
 main().catch((err: unknown) => {

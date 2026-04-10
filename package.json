@@ -8,8 +8,7 @@
   },
   "files": [
     "dist",
-    "skill",
-    "scripts/postinstall.js"
+    "skill"
   ],
   "scripts": {
     "clean": "rm -rf dist",
@@ -19,8 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "pnpm run build",
+"prepublishOnly": "pnpm run build",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "node scripts/release.js"
