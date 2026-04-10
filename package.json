@@ -23,8 +23,7 @@
     "prepublishOnly": "pnpm run build",
     "changeset": "changeset",
     "version": "changeset version",
-    "prepare-release": "node scripts/prepare-release.js",
-    "release": "pnpm run build && changeset publish && git push --follow-tags"
+    "release": "node scripts/release.js"
   },
   "keywords": [
     "cloudflare",

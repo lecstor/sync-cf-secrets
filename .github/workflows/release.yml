@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # id-token: write is required for OIDC trusted publishing to npm.
+      # This lets `changeset publish` exchange a short-lived GitHub Actions
+      # token for an npm publish token — no long-lived NPM_TOKEN secret
+      # ever exists in this repo.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # --no-git-tag: the tag already exists (we pushed it from the maintainer's
+      #   laptop — that tag push is what triggered this workflow), so skip
+      #   changesets' tag creation step.
+      # NPM_CONFIG_PROVENANCE=true: stamps the package with an npm provenance
+      #   attestation so the npmjs.com page shows "Built and signed on GitHub
+      #   Actions" and links back to this workflow run.
+      - name: Publish to npm
+        run: pnpm exec changeset publish --no-git-tag
+        env:
+          NPM_CONFIG_PROVENANCE: "true"

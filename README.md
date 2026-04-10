@@ -198,7 +198,7 @@ pnpm approve-builds sync-cf-secrets
 
 ## Contributing
 
-This project uses [changesets](https://github.com/changesets/changesets) for version management.
+This project uses [changesets](https://github.com/changesets/changesets) for version management and [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers) for `npm publish`. The actual publish only ever runs from GitHub Actions, triggered by a `vX.Y.Z` tag push, and npm stamps the released package with a provenance attestation.
 
 ```bash
 # After making changes, create a changeset and commit it alongside the change
@@ -206,10 +206,36 @@ pnpm changeset
 # → interactive prompt: pick patch/minor/major, write a summary
 
 # When ready to release
-pnpm prepare-release   # guards (clean tree, pending changeset, typecheck/test/build),
-                       # then runs `changeset version` and commits as "Version X.Y.Z"
-git push origin main   # push the version commit so CI runs before publish
-pnpm release           # build → publish to npm → create vX.Y.Z tag → git push --follow-tags
+pnpm release
+# → guards (clean tree, on main, up-to-date, pending changeset),
+#   runs typecheck/test/build, bumps package.json + CHANGELOG.md,
+#   commits as "Version X.Y.Z", shows you the diff, and prompts before
+#   pushing main + the vX.Y.Z tag. Tag push triggers
+#   .github/workflows/release.yml, which publishes to npm via OIDC.
+```
+
+### If the release workflow fails after the tag is pushed
+
+The `Version X.Y.Z` commit is on `main` and the `vX.Y.Z` tag is pushed, but
+nothing has been published to npm. Because `pnpm release` has already consumed
+the pending changeset, you **cannot rerun `pnpm release`** to retry — it will
+fail the "no pending changesets" guard.
+
+Recovery:
+
+```bash
+# 1. Delete the bad tag locally and on the remote
+git tag -d vX.Y.Z
+git push origin :refs/tags/vX.Y.Z
+
+# 2. Fix whatever broke, commit the fix on main, push
+git commit -am "fix: ..."
+git push origin main
+
+# 3. Re-tag HEAD (annotated, matching how changesets creates them) and
+#    push the tag to re-trigger the release workflow
+git tag -a vX.Y.Z -m "Version X.Y.Z"
+git push origin vX.Y.Z
 ```
 
 See `CLAUDE.md` for the full architecture and release notes.
