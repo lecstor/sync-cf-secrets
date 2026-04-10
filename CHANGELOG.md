@@ -1,5 +1,11 @@
 # sync-cf-secrets
 
+## 0.5.0
+
+### Minor Changes
+
+- ab6ff1c: Replace automatic postinstall skill copy with opt-in `install-skill` and `reveal-skill` commands. The postinstall script that wrote to `~/.claude/skills/` on `npm install` has been removed — run `sync-cf-secrets install-skill` to install the Claude Code skill, or `sync-cf-secrets reveal-skill` to get the path for manual copying.
+
 ## 0.4.1
 
 ### Patch Changes
