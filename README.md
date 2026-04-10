@@ -16,6 +16,8 @@ npm install -D sync-cf-secrets
 
 Requires Node.js 20+ and [wrangler](https://developers.cloudflare.com/workers/wrangler/) installed.
 
+A bundled [Claude Code skill](#ai-skill) is available — run `sync-cf-secrets install-skill` to let AI assistants help manage your secrets.
+
 ## Quick Start
 
 ```bash
