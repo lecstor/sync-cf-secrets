@@ -112,10 +112,13 @@ sync-cf-secrets copy local staging --dry-run
 
 Push secrets from the password manager to Cloudflare via `wrangler secret put`. Skips wrangler `vars`. Reports progress per secret and continues on individual failures.
 
+Use `--fields` to push only specific fields (e.g. when adding a couple of new secrets without re-pushing existing ones).
+
 ```bash
 sync-cf-secrets push staging
 sync-cf-secrets push production
 sync-cf-secrets push staging --dry-run
+sync-cf-secrets push staging --fields NEW_KEY,OTHER_KEY
 ```
 
 ### `pull <env>`
@@ -151,7 +154,7 @@ sync-cf-secrets diff production --verbose
 |---|---|
 | `--provider <name>` | Force a provider: `1password`, `bitwarden` |
 | `--vault <name>` | Override the vault name |
-| `--fields <a,b,...>` | Only copy specific fields (merges into target) |
+| `--fields <a,b,...>` | Only sync specific fields (push and copy) |
 | `--dry-run` | Preview without making changes |
 | `--verbose` | Show more detail |
 

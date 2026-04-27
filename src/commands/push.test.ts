@@ -166,6 +166,37 @@ describe("push", () => {
     expect(success).not.toHaveBeenCalled();
   });
 
+  it("filters to --fields when provided", async () => {
+    const secrets = new Map([["A", "1"], ["B", "2"], ["C", "3"]]);
+    const provider = makeProvider({ fetch: vi.fn().mockResolvedValue(secrets) });
+
+    await push(provider, makeConfig(), {
+      env: "staging",
+      fields: ["A", "C"],
+      dryRun: false,
+      verbose: false,
+    });
+
+    expect(mockPutSecret).toHaveBeenCalledTimes(2);
+    expect(mockPutSecret).toHaveBeenCalledWith("A", "1", "staging", "/fake/wrangler.toml");
+    expect(mockPutSecret).toHaveBeenCalledWith("C", "3", "staging", "/fake/wrangler.toml");
+  });
+
+  it("throws when --fields contains an unknown field", async () => {
+    const secrets = new Map([["A", "1"], ["B", "2"]]);
+    const provider = makeProvider({ fetch: vi.fn().mockResolvedValue(secrets) });
+
+    await expect(
+      push(provider, makeConfig(), {
+        env: "staging",
+        fields: ["A", "MISSING"],
+        dryRun: false,
+        verbose: false,
+      }),
+    ).rejects.toThrow(/Field\(s\) not found.*MISSING/s);
+    expect(mockPutSecret).not.toHaveBeenCalled();
+  });
+
   it("reports success count", async () => {
     const { success } = await import("../utils.js");
     const secrets = new Map([["A", "1"], ["B", "2"]]);

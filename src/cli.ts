@@ -21,6 +21,7 @@ sync-cf-secrets — Sync secrets from your password manager to Cloudflare Worker
 
 Usage:
   sync-cf-secrets push <env>               Push secrets to Cloudflare
+  sync-cf-secrets push <env> --fields A,B  Push specific fields only
   sync-cf-secrets pull <env>               Write .dev.vars from password manager
   sync-cf-secrets init                     Create items for all environments from .dev.vars
   sync-cf-secrets copy <from> <to>         Copy secrets between environments
@@ -33,7 +34,7 @@ Usage:
 Options:
   --provider <name>   Password manager: 1password, bitwarden (auto-detected)
   --vault <name>      Override vault name
-  --fields <a,b,...>  Only copy specific fields (for copy command)
+  --fields <a,b,...>  Only sync specific fields (for push and copy)
   --force             Replace existing items (for init command)
   --dry-run           Show what would happen without doing it
   --verbose           Show more detail
@@ -105,6 +106,7 @@ async function main(): Promise<void> {
       case "push":
         return push(provider, config, {
           env: env!,
+          fields: values.fields?.split(",").map((f) => f.trim()),
           dryRun: values["dry-run"]!,
           verbose: values.verbose!,
         });

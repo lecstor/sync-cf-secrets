@@ -5,6 +5,7 @@ import { getWranglerVars, putSecret, validateWrangler } from "../wrangler.js";
 
 export interface PushOptions {
   env: string;
+  fields?: string[];
   dryRun: boolean;
   verbose: boolean;
 }
@@ -49,6 +50,22 @@ export async function push(
 
   if (skipped.length > 0) {
     log(`Skipping ${skipped.length} var(s) already in wrangler config: ${skipped.join(", ")}`);
+  }
+
+  if (opts.fields) {
+    const requested = new Set(opts.fields);
+    const unknown = opts.fields.filter((f) => !secrets.has(f));
+    if (unknown.length > 0) {
+      throw new Error(
+        `Field(s) not found in "${envConfig.item}": ${unknown.join(", ")}\n` +
+          `Available: ${Array.from(secrets.keys()).sort().join(", ")}`,
+      );
+    }
+    for (const name of secrets.keys()) {
+      if (!requested.has(name)) {
+        secrets.delete(name);
+      }
+    }
   }
 
   log(`Found ${secrets.size} secret(s) to push.`);
