@@ -1,5 +1,11 @@
 # sync-cf-secrets
 
+## 0.6.0
+
+### Minor Changes
+
+- 0df9928: Add `--fields` flag to `push` command to push only specific secrets (mirrors the existing `--fields` behaviour on `copy`).
+
 ## 0.5.0
 
 ### Minor Changes
